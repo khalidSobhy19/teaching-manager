@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Calendar, FileText, DollarSign, PlusCircle, 
-  Trash2, Edit, Download, Printer, Home, CheckCircle, XCircle, Clock
+  Trash2, Edit, Download, Printer, Home, CheckCircle, XCircle, Clock, TrendingUp
 } from 'lucide-react';
 
 // --- الثوابت ---
@@ -65,13 +65,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toast, setToast] = useState(null);
 
-  // --- التحميل الآمن من LocalStorage (Lazy Initialization) ---
+  // --- التحميل الآمن من LocalStorage ---
   const [levelPrices, setLevelPrices] = useState(() => {
     try {
       const saved = localStorage.getItem('teachingLevelPrices');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return { Q1: 110, Q2: 110, Q3: 120 }; // القيم الافتراضية
+    return { Q1: 110, Q2: 110, Q3: 120 }; 
   });
 
   const [groups, setGroups] = useState(() => {
@@ -98,7 +98,7 @@ export default function App() {
     return [];
   });
 
-  // --- الحفظ في LocalStorage عند التغيير ---
+  // --- الحفظ في LocalStorage ---
   useEffect(() => {
     localStorage.setItem('teachingLevelPrices', JSON.stringify(levelPrices));
   }, [levelPrices]);
@@ -129,6 +129,42 @@ export default function App() {
       return d >= currentPeriod.start && d <= currentPeriod.end;
     });
   }, [sessions, currentPeriod]);
+
+  // حساب الراتب المتوقع بناءً على الجدول الزمني
+  const projectedStats = useMemo(() => {
+    // 1. حساب عدد تكرار كل يوم في فترة الراتب الحالية
+    const dayCounts = {};
+    const jsDaysMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    DAYS_OF_WEEK.forEach(d => dayCounts[d] = 0);
+
+    let currentDate = new Date(currentPeriod.start);
+    currentDate.setHours(12, 0, 0, 0); // أمان من فرق التوقيت
+    const endDate = new Date(currentPeriod.end);
+    endDate.setHours(12, 0, 0, 0);
+
+    while (currentDate <= endDate) {
+      const dayName = jsDaysMap[currentDate.getDay()];
+      if (dayCounts[dayName] !== undefined) {
+        dayCounts[dayName] += 1;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // 2. حساب إجمالي الحصص المتوقعة والراتب المتوقع
+    let targetSessions = 0;
+    let targetSalary = 0;
+
+    schedules.forEach(schedule => {
+      const occurrences = dayCounts[schedule.day] || 0;
+      const group = groups.find(g => g.id === schedule.groupId);
+      if (group) {
+        targetSessions += occurrences;
+        targetSalary += (occurrences * group.price);
+      }
+    });
+
+    return { targetSessions, targetSalary };
+  }, [currentPeriod, schedules, groups]);
 
   // --- الإجراءات (Actions) ---
   const addGroup = (groupData) => {
@@ -222,7 +258,7 @@ export default function App() {
           name: finalGroupCode,
           code: finalGroupCode,
           level: level,
-          price: levelPrices[level] || 110 // أخذ السعر من الإعدادات
+          price: levelPrices[level] || 110 
         };
         setGroups(prev => [...prev, group]);
       } else {
@@ -230,7 +266,6 @@ export default function App() {
         return false;
       }
     } else if (isSmartCode) {
-      // تحديث مستوى الجروب وسعره بناءً على الكود الذكي
       group = { ...group, level: level, price: levelPrices[level] || 110 };
     }
 
@@ -268,36 +303,73 @@ export default function App() {
       return acc;
     }, {});
 
+    // نسبة التقدم
+    const progressPercent = projectedStats.targetSalary > 0 
+      ? Math.min(100, Math.round((totalSalary / projectedStats.targetSalary) * 100)) 
+      : 0;
+
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-800">Current Period Overview</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          {formatDate(currentPeriod.start)} - {formatDate(currentPeriod.end)}
-        </p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+          <h2 className="text-2xl font-bold text-gray-800">Overview & Projections</h2>
+          <span className="text-sm font-medium bg-white px-3 py-1 border border-gray-200 rounded-full text-gray-600 shadow-sm">
+            {formatDate(currentPeriod.start)} - {formatDate(currentPeriod.end)}
+          </span>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* كروت التوقعات (Projections) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl shadow-md text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-10">
+              <TrendingUp size={80} />
+            </div>
+            <h3 className="text-slate-300 font-medium mb-1">Target Salary (From Schedules)</h3>
+            <div className="flex items-end gap-2">
+              <span className="text-4xl font-bold text-white">{projectedStats.targetSalary}</span>
+              <span className="text-lg text-slate-400 mb-1">EGP</span>
+            </div>
+            <p className="text-sm text-slate-400 mt-2">
+              Based on {projectedStats.targetSessions} scheduled sessions this period.
+            </p>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center relative overflow-hidden">
+            <h3 className="text-gray-500 font-medium mb-1">Current Earned Salary</h3>
+            <div className="flex items-end gap-2 mb-4">
+              <span className="text-4xl font-bold text-emerald-600">{totalSalary}</span>
+              <span className="text-lg text-gray-400 mb-1">EGP</span>
+            </div>
+            
+            {/* شريط التقدم */}
+            <div className="w-full bg-gray-100 rounded-full h-2.5 mb-1">
+              <div 
+                className="bg-emerald-500 h-2.5 rounded-full transition-all duration-1000 ease-out" 
+                style={{ width: `${progressPercent}%` }}
+              ></div>
+            </div>
+            <div className="flex justify-between text-xs font-medium text-gray-500">
+              <span>{progressPercent}% Achieved</span>
+              <span>{projectedStats.targetSalary > totalSalary ? `${projectedStats.targetSalary - totalSalary} EGP left` : 'Target Met! 🎉'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
             <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
               <Calendar size={24} />
             </div>
             <div>
-              <p className="text-sm text-gray-500 font-medium">Total Sessions</p>
-              <p className="text-2xl font-bold text-gray-900">{currentPeriodSessions.length}</p>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
-            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
-              <DollarSign size={24} />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 font-medium">Expected Salary</p>
-              <p className="text-2xl font-bold text-gray-900">{totalSalary} EGP</p>
+              <p className="text-sm text-gray-500 font-medium">Completed Sessions</p>
+              <div className="flex items-baseline gap-2">
+                <p className="text-2xl font-bold text-gray-900">{currentPeriodSessions.length}</p>
+                <p className="text-xs text-gray-400">/ {projectedStats.targetSessions} expected</p>
+              </div>
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500 font-medium mb-2">Sessions by Level</p>
+            <p className="text-sm text-gray-500 font-medium mb-2">Sessions Breakdown</p>
             <div className="space-y-2">
               {Object.keys(levelPrices).map(level => (
                 <div key={level} className="flex justify-between items-center text-sm">
@@ -583,7 +655,6 @@ const AddGroupForm = ({ onAdd, levelPrices }) => {
   );
 };
 
-// مكون جدول المجموعات مع زر التعديل
 const GroupTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
@@ -737,7 +808,6 @@ const AddScheduleForm = ({ groups, onAdd }) => {
   );
 };
 
-// --- المكون الجديد: InteractiveScheduleView مع زر التعديل ---
 const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
   const [selectedDay, setSelectedDay] = useState(DAYS_OF_WEEK[0]);
   const [editingId, setEditingId] = useState(null);
@@ -759,7 +829,6 @@ const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
 
   return (
     <div>
-      {/* Tabs */}
       <div className="flex overflow-x-auto no-scrollbar space-x-2 pb-4 mb-4 border-b border-gray-200">
         {DAYS_OF_WEEK.map(day => (
           <button
@@ -912,7 +981,6 @@ const QuickAddSession = ({ onAdd }) => {
   );
 };
 
-// --- جدول السيشنز مع إمكانيات تعديل موسعة (تاريخ، مستوى، سعر) ---
 const SessionTable = ({ sessions, onDelete, onUpdate, levelPrices }) => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
