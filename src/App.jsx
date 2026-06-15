@@ -5,12 +5,6 @@ import {
 } from 'lucide-react';
 
 // --- الثوابت ---
-const LEVEL_PRICES = {
-  Q1: 110,
-  Q2: 110,
-  Q3: 120,
-};
-
 const DAYS_OF_WEEK = [
   'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
 ];
@@ -59,7 +53,6 @@ const formatDate = (dateString) => {
 };
 
 const formatTime = (timeString) => {
-  // timeString is typically "HH:mm" in 24h format
   if (!timeString) return '';
   const [hours, minutes] = timeString.split(':');
   const d = new Date();
@@ -73,13 +66,19 @@ export default function App() {
   const [toast, setToast] = useState(null);
 
   // --- التحميل الآمن من LocalStorage (Lazy Initialization) ---
+  const [levelPrices, setLevelPrices] = useState(() => {
+    try {
+      const saved = localStorage.getItem('teachingLevelPrices');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { Q1: 110, Q2: 110, Q3: 120 }; // القيم الافتراضية
+  });
+
   const [groups, setGroups] = useState(() => {
     try {
       const saved = localStorage.getItem('teachingGroups');
       if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error loading groups from localStorage", e);
-    }
+    } catch (e) {}
     return [];
   });
 
@@ -87,9 +86,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('teachingSessions');
       if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error loading sessions from localStorage", e);
-    }
+    } catch (e) {}
     return [];
   });
 
@@ -97,35 +94,25 @@ export default function App() {
     try {
       const saved = localStorage.getItem('teachingSchedules');
       if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error loading schedules from localStorage", e);
-    }
+    } catch (e) {}
     return [];
   });
 
   // --- الحفظ في LocalStorage عند التغيير ---
   useEffect(() => {
-    try {
-      localStorage.setItem('teachingGroups', JSON.stringify(groups));
-    } catch (e) {
-      console.error("Error saving groups to localStorage", e);
-    }
+    localStorage.setItem('teachingLevelPrices', JSON.stringify(levelPrices));
+  }, [levelPrices]);
+
+  useEffect(() => {
+    localStorage.setItem('teachingGroups', JSON.stringify(groups));
   }, [groups]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('teachingSessions', JSON.stringify(sessions));
-    } catch (e) {
-      console.error("Error saving sessions to localStorage", e);
-    }
+    localStorage.setItem('teachingSessions', JSON.stringify(sessions));
   }, [sessions]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('teachingSchedules', JSON.stringify(schedules));
-    } catch (e) {
-      console.error("Error saving schedules to localStorage", e);
-    }
+    localStorage.setItem('teachingSchedules', JSON.stringify(schedules));
   }, [schedules]);
 
   const showToast = (message, type = 'success') => {
@@ -153,19 +140,22 @@ export default function App() {
     showToast('Group added successfully');
   };
 
+  const updateGroup = (id, updatedData) => {
+    setGroups(groups.map(g => g.id === id ? { ...g, ...updatedData } : g));
+    showToast('Group updated successfully');
+  };
+
   const deleteGroup = (id) => {
     if (sessions.some(s => s.groupId === id)) {
       showToast('Cannot delete group with existing sessions.', 'error');
       return;
     }
-    // Also delete any schedules associated with this group
     setSchedules(schedules.filter(s => s.groupId !== id));
     setGroups(groups.filter(g => g.id !== id));
     showToast('Group deleted');
   };
 
   const addSchedule = (scheduleData) => {
-    // Check if this exact slot already exists
     if (schedules.some(s => s.groupId === scheduleData.groupId && s.day === scheduleData.day && s.time === scheduleData.time)) {
       showToast('This exact schedule already exists!', 'error');
       return;
@@ -174,18 +164,21 @@ export default function App() {
     showToast('Schedule added successfully');
   };
 
+  const updateSchedule = (id, updatedData) => {
+    setSchedules(schedules.map(s => s.id === id ? { ...s, ...updatedData } : s));
+    showToast('Schedule updated successfully');
+  };
+
   const deleteSchedule = (id) => {
     setSchedules(schedules.filter(s => s.id !== id));
     showToast('Schedule deleted');
   };
 
-  // دالة الإضافة الذكية المعدلة
   const addSessionByCode = (inputString, manualDateStr) => {
     const codeStr = inputString.trim();
     if (!codeStr) return false;
 
     let sessionDate = new Date();
-    // إعطاء الأولوية المطلقة للتاريخ القادم من مربع الإدخال
     if (manualDateStr) {
       const [y, m, d] = manualDateStr.split('-');
       sessionDate = new Date(y, m - 1, d, 12, 0, 0, 0); 
@@ -193,28 +186,21 @@ export default function App() {
       sessionDate.setHours(12, 0, 0, 0);
     }
 
-    let level = 'Q1'; // default
+    let level = 'Q1'; 
     let isSmartCode = codeStr.includes('.');
-    
     let parsedTime = null;
 
     if (isSmartCode) {
       const parts = codeStr.split('.');
-      
       parts.forEach(part => {
         const lowerPart = part.toLowerCase();
-        
         if (['q1', 'q2', 'q3'].includes(lowerPart)) {
           level = lowerPart.toUpperCase();
-        } else if (/^\d{8}$/.test(part)) {
-          // يتم تجاهل التاريخ هنا لأننا استخدمناه بالفعل لتحديث المربع اليدوي
-          // ولن نسمح له بأن يمحو اختيار المستخدم أبداً
         } else if (/^\d{1,2}(am|pm)$/.test(lowerPart) || lowerPart === 'am' || lowerPart === 'pm') {
           parsedTime = lowerPart; 
         }
       });
 
-      // تطبيق الوقت المستخرج
       if (parsedTime) {
         const isPM = parsedTime.endsWith('pm');
         let hour = parseInt(parsedTime.replace(/a|p|m/g, ''), 10);
@@ -226,20 +212,17 @@ export default function App() {
       }
     }
 
-    // التعديل هنا: استخدام الكود الكامل كما هو كاسم للجروب وكود له
     const finalGroupCode = codeStr; 
-    
-    // البحث عن المجموعة أو إنشائها
     let group = groups.find(g => g.code.toLowerCase() === finalGroupCode.toLowerCase());
     
     if (!group) {
       if (isSmartCode) {
         group = {
           id: generateId(),
-          name: finalGroupCode, // الاسم سيكون الكود كاملاً
-          code: finalGroupCode, // الكود سيكون الكود كاملاً
+          name: finalGroupCode,
+          code: finalGroupCode,
           level: level,
-          price: LEVEL_PRICES[level]
+          price: levelPrices[level] || 110 // أخذ السعر من الإعدادات
         };
         setGroups(prev => [...prev, group]);
       } else {
@@ -247,7 +230,8 @@ export default function App() {
         return false;
       }
     } else if (isSmartCode) {
-      group = { ...group, level: level, price: LEVEL_PRICES[level] };
+      // تحديث مستوى الجروب وسعره بناءً على الكود الذكي
+      group = { ...group, level: level, price: levelPrices[level] || 110 };
     }
 
     const newSession = {
@@ -266,14 +250,14 @@ export default function App() {
     return true;
   };
 
-  const deleteSession = (id) => {
-    setSessions(sessions.filter(s => s.id !== id));
-    showToast('Session deleted');
-  };
-
   const updateSession = (id, updatedData) => {
     setSessions(sessions.map(s => s.id === id ? { ...s, ...updatedData } : s));
     showToast('Session updated');
+  };
+
+  const deleteSession = (id) => {
+    setSessions(sessions.filter(s => s.id !== id));
+    showToast('Session deleted');
   };
 
   // --- الواجهات (Views) ---
@@ -315,7 +299,7 @@ export default function App() {
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <p className="text-sm text-gray-500 font-medium mb-2">Sessions by Level</p>
             <div className="space-y-2">
-              {Object.keys(LEVEL_PRICES).map(level => (
+              {Object.keys(levelPrices).map(level => (
                 <div key={level} className="flex justify-between items-center text-sm">
                   <span className="font-medium text-gray-700">{level}</span>
                   <span className="text-gray-900 bg-gray-100 px-2 py-1 rounded-md">
@@ -338,43 +322,34 @@ export default function App() {
   const renderGroups = () => {
     return (
       <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-800">Manage Groups</h2>
+        <h2 className="text-2xl font-bold text-gray-800">Manage Groups & Levels</h2>
         
+        {/* إعدادات أسعار المستويات */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <AddGroupForm onAdd={addGroup} />
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">Default Level Prices</h3>
+          <div className="flex flex-wrap gap-4">
+            {Object.keys(levelPrices).map(level => (
+              <div key={level} className="flex-1 min-w-[120px]">
+                <label className="block text-sm font-medium text-gray-700 mb-1">{level} Price (EGP)</label>
+                <input
+                  type="number"
+                  value={levelPrices[level]}
+                  onChange={(e) => setLevelPrices({ ...levelPrices, [level]: Number(e.target.value) })}
+                  className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50"
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-3">* Changes here will automatically apply to newly added sessions and groups.</p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">Add New Group</h3>
+          <AddGroupForm onAdd={addGroup} levelPrices={levelPrices} />
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Group Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price/Session</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {groups.length === 0 ? (
-                <tr><td colSpan="4" className="px-6 py-4 text-center text-gray-500">No groups added yet.</td></tr>
-              ) : (
-                groups.map(g => (
-                  <tr key={g.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-blue-600 font-bold">{g.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">{g.level}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{g.price} EGP</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => deleteGroup(g.id)} className="text-red-600 hover:text-red-900 ml-4">
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <GroupTable groups={groups} onDelete={deleteGroup} onUpdate={updateGroup} levelPrices={levelPrices} />
         </div>
       </div>
     );
@@ -390,8 +365,8 @@ export default function App() {
           <AddScheduleForm groups={groups} onAdd={addSchedule} />
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <ScheduleTable schedules={schedules} groups={groups} onDelete={deleteSchedule} />
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <InteractiveScheduleView schedules={schedules} groups={groups} onDelete={deleteSchedule} onUpdate={updateSchedule} />
         </div>
       </div>
     );
@@ -401,13 +376,8 @@ export default function App() {
     return (
       <div className="space-y-6">
         <h2 className="text-2xl font-bold text-gray-800">Session History</h2>
-        
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <SessionTable 
-            sessions={sessions} 
-            onDelete={deleteSession} 
-            onUpdate={updateSession}
-          />
+          <SessionTable sessions={sessions} onDelete={deleteSession} onUpdate={updateSession} levelPrices={levelPrices} />
         </div>
       </div>
     );
@@ -464,12 +434,12 @@ export default function App() {
             <div className="bg-gray-50 p-6 rounded-lg print:border print:border-gray-200">
               <h3 className="text-lg font-semibold text-gray-700 border-b pb-2 mb-4">Breakdown by Level</h3>
               <div className="space-y-2">
-                {Object.keys(LEVEL_PRICES).map(level => {
+                {Object.keys(levelPrices).map(level => {
                   const count = currentPeriodSessions.filter(s => s.level === level).length;
-                  const sum = count * LEVEL_PRICES[level];
+                  const sum = currentPeriodSessions.filter(s => s.level === level).reduce((acc, s) => acc + s.price, 0);
                   return (
                     <div key={level} className="flex justify-between text-sm">
-                      <span className="text-gray-600">{level} ({LEVEL_PRICES[level]} EGP):</span>
+                      <span className="text-gray-600">{level}:</span>
                       <span className="font-medium text-gray-900">{count} sessions = {sum} EGP</span>
                     </div>
                   );
@@ -565,21 +535,19 @@ const NavButton = ({ icon, label, isActive, onClick }) => (
   </button>
 );
 
-const AddGroupForm = ({ onAdd }) => {
+const AddGroupForm = ({ onAdd, levelPrices }) => {
   const [code, setCode] = useState('');
   const [level, setLevel] = useState('Q1');
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!code) return;
-    
     onAdd({
-      name: code.trim(), // Name and code are the same now based on previous request
+      name: code.trim(), 
       code: code.trim(),
       level,
-      price: LEVEL_PRICES[level]
+      price: levelPrices[level] || 110
     });
-    
     setCode('');
   };
 
@@ -600,9 +568,9 @@ const AddGroupForm = ({ onAdd }) => {
           value={level} onChange={e => setLevel(e.target.value)}
           className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
         >
-          <option value="Q1">Q1 (110)</option>
-          <option value="Q2">Q2 (110)</option>
-          <option value="Q3">Q3 (120)</option>
+          {Object.keys(levelPrices).map(l => (
+            <option key={l} value={l}>{l} ({levelPrices[l]})</option>
+          ))}
         </select>
       </div>
       <button 
@@ -615,6 +583,99 @@ const AddGroupForm = ({ onAdd }) => {
   );
 };
 
+// مكون جدول المجموعات مع زر التعديل
+const GroupTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
+  const [editingId, setEditingId] = useState(null);
+  const [editData, setEditData] = useState({});
+
+  const startEdit = (group) => {
+    setEditingId(group.id);
+    setEditData({ ...group });
+  };
+
+  const saveEdit = () => {
+    onUpdate(editingId, editData);
+    setEditingId(null);
+  };
+
+  if (groups.length === 0) {
+    return <div className="p-8 text-center text-gray-500">No groups added yet.</div>;
+  }
+
+  return (
+    <table className="min-w-full divide-y divide-gray-200">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Group Name</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price/Session</th>
+          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {groups.map(g => (
+          <tr key={g.id} className="hover:bg-gray-50 transition-colors">
+            <td className="px-6 py-4 whitespace-nowrap text-sm">
+              {editingId === g.id ? (
+                <input 
+                  type="text" 
+                  value={editData.name} 
+                  onChange={e => setEditData({...editData, name: e.target.value, code: e.target.value})}
+                  className="border border-gray-300 rounded px-2 py-1 text-sm font-mono w-full"
+                />
+              ) : (
+                <span className="font-mono text-blue-600 font-bold">{g.name}</span>
+              )}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm">
+              {editingId === g.id ? (
+                <select 
+                  value={editData.level} 
+                  onChange={e => setEditData({...editData, level: e.target.value})}
+                  className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                >
+                  {Object.keys(levelPrices).map(l => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">{g.level}</span>
+              )}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              {editingId === g.id ? (
+                <div className="flex items-center">
+                  <input 
+                    type="number" 
+                    value={editData.price} 
+                    onChange={e => setEditData({...editData, price: Number(e.target.value)})}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm w-20 mr-1"
+                  />
+                  <span className="text-gray-500 text-xs">EGP</span>
+                </div>
+              ) : (
+                `${g.price} EGP`
+              )}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+              {editingId === g.id ? (
+                <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-900 mr-4 font-bold">Save</button>
+              ) : (
+                <button onClick={() => startEdit(g)} className="text-blue-600 hover:text-blue-900 mr-4">
+                  <Edit size={18} />
+                </button>
+              )}
+              <button onClick={() => onDelete(g.id)} className="text-red-600 hover:text-red-900">
+                <Trash2 size={18} />
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
 const AddScheduleForm = ({ groups, onAdd }) => {
   const [groupId, setGroupId] = useState('');
   const [day, setDay] = useState(DAYS_OF_WEEK[0]);
@@ -624,7 +685,7 @@ const AddScheduleForm = ({ groups, onAdd }) => {
     e.preventDefault();
     if (!groupId || !day || !time) return;
     onAdd({ groupId, day, time });
-    setTime(''); // Reset time after adding
+    setTime(''); 
   };
 
   return (
@@ -676,58 +737,115 @@ const AddScheduleForm = ({ groups, onAdd }) => {
   );
 };
 
-const ScheduleTable = ({ schedules, groups, onDelete }) => {
-  if (schedules.length === 0) {
-    return <div className="p-8 text-center text-gray-500">No schedules set up yet.</div>;
-  }
+// --- المكون الجديد: InteractiveScheduleView مع زر التعديل ---
+const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
+  const [selectedDay, setSelectedDay] = useState(DAYS_OF_WEEK[0]);
+  const [editingId, setEditingId] = useState(null);
+  const [editData, setEditData] = useState({});
 
-  // Sort by Day then Time
-  const sortedSchedules = [...schedules].sort((a, b) => {
-    const dayDiff = DAYS_OF_WEEK.indexOf(a.day) - DAYS_OF_WEEK.indexOf(b.day);
-    if (dayDiff !== 0) return dayDiff;
-    return a.time.localeCompare(b.time);
-  });
+  const daySchedules = schedules
+    .filter(s => s.day === selectedDay)
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  const startEdit = (schedule) => {
+    setEditingId(schedule.id);
+    setEditData({ ...schedule });
+  };
+
+  const saveEdit = () => {
+    onUpdate(editingId, editData);
+    setEditingId(null);
+  };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Day</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Group</th>
-            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {sortedSchedules.map((s, index) => {
+    <div>
+      {/* Tabs */}
+      <div className="flex overflow-x-auto no-scrollbar space-x-2 pb-4 mb-4 border-b border-gray-200">
+        {DAYS_OF_WEEK.map(day => (
+          <button
+            key={day}
+            onClick={() => { setSelectedDay(day); setEditingId(null); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              selectedDay === day 
+                ? 'bg-blue-600 text-white shadow-md' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {day}
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+              selectedDay === day ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-700'
+            }`}>
+              {schedules.filter(s => s.day === day).length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {daySchedules.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+          <Clock className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+          <p className="text-gray-500">No sessions scheduled for {selectedDay}.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {daySchedules.map(s => {
             const group = groups.find(g => g.id === s.groupId);
-            return (
-              <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {s.day}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                  <div className="flex items-center space-x-2">
-                    <Clock size={16} className="text-gray-400" />
-                    <span>{formatTime(s.time)}</span>
+            
+            if (editingId === s.id) {
+              return (
+                <div key={s.id} className="flex flex-col bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-sm">
+                  <div className="space-y-3 mb-4">
+                    <div>
+                      <label className="text-xs text-gray-500">Day</label>
+                      <select value={editData.day} onChange={e => setEditData({...editData, day: e.target.value})} className="w-full border rounded p-1 text-sm bg-white">
+                        {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Time</label>
+                      <input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="w-full border rounded p-1 text-sm" />
+                    </div>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="text-sm font-mono font-bold text-blue-600">
+                  <div className="flex justify-end space-x-2">
+                    <button onClick={() => setEditingId(null)} className="px-3 py-1 text-sm text-gray-600 bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
+                    <button onClick={saveEdit} className="px-3 py-1 text-sm text-white bg-emerald-600 rounded hover:bg-emerald-700 font-medium">Save</button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={s.id} className="flex flex-col bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative group/card">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-lg">
+                    <Clock size={16} className="mr-2" />
+                    {formatTime(s.time)}
+                  </div>
+                  <div className="flex space-x-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                    <button onClick={() => startEdit(s)} className="text-gray-400 hover:text-blue-600 p-1" title="Edit schedule">
+                      <Edit size={16} />
+                    </button>
+                    <button onClick={() => onDelete(s.id)} className="text-gray-400 hover:text-red-600 p-1" title="Delete schedule">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="text-gray-900 font-mono font-bold text-lg mb-1 break-all">
                     {group ? group.name : 'Unknown Group'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => onDelete(s.id)} className="text-red-600 hover:text-red-900">
-                    <Trash2 size={18} />
-                  </button>
-                </td>
-              </tr>
+                  </h4>
+                  {group && (
+                    <span className="inline-block bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded border border-gray-200 mt-2">
+                      Level: {group.level}
+                    </span>
+                  )}
+                </div>
+              </div>
             );
           })}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   );
 };
@@ -736,7 +854,6 @@ const QuickAddSession = ({ onAdd }) => {
   const [code, setCode] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => getLocalYYYYMMDD());
 
-  // تعديل ذكي: عند لصق كود، استخرج التاريخ وحدث المربع للمستخدم ليراه ويتأكد منه!
   useEffect(() => {
     if (code && code.includes('.')) {
       const parts = code.split('.');
@@ -746,7 +863,6 @@ const QuickAddSession = ({ onAdd }) => {
         const month = datePart.substring(2, 4);
         const year = datePart.substring(4, 8);
         const parsedYMD = `${year}-${month}-${day}`;
-        // التأكد من صحة التاريخ قبل وضعه في المربع
         const d = new Date(parsedYMD);
         if (!isNaN(d.getTime())) {
           setSelectedDate(parsedYMD);
@@ -761,7 +877,6 @@ const QuickAddSession = ({ onAdd }) => {
     const success = onAdd(code, selectedDate);
     if (success) {
       setCode(''); 
-      // إعادة ضبط المربع لتاريخ اليوم للسيشن القادمة
       setSelectedDate(getLocalYYYYMMDD());
     }
   };
@@ -797,19 +912,28 @@ const QuickAddSession = ({ onAdd }) => {
   );
 };
 
-const SessionTable = ({ sessions, onDelete, onUpdate }) => {
+// --- جدول السيشنز مع إمكانيات تعديل موسعة (تاريخ، مستوى، سعر) ---
+const SessionTable = ({ sessions, onDelete, onUpdate, levelPrices }) => {
   const [editingId, setEditingId] = useState(null);
-  const [editDate, setEditDate] = useState('');
+  const [editData, setEditData] = useState({});
 
   const startEdit = (session) => {
     setEditingId(session.id);
     const d = new Date(session.date);
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    setEditDate(d.toISOString().slice(0, 16));
+    setEditData({
+      date: d.toISOString().slice(0, 16),
+      level: session.level,
+      price: session.price
+    });
   };
 
   const saveEdit = (id) => {
-    onUpdate(id, { date: new Date(editDate).toISOString() });
+    onUpdate(id, { 
+      date: new Date(editData.date).toISOString(),
+      level: editData.level,
+      price: editData.price
+    });
     setEditingId(null);
   };
 
@@ -836,8 +960,8 @@ const SessionTable = ({ sessions, onDelete, onUpdate }) => {
                 {editingId === s.id ? (
                   <input 
                     type="datetime-local" 
-                    value={editDate} 
-                    onChange={e => setEditDate(e.target.value)}
+                    value={editData.date} 
+                    onChange={e => setEditData({...editData, date: e.target.value})}
                     className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
                   />
                 ) : (
@@ -853,18 +977,42 @@ const SessionTable = ({ sessions, onDelete, onUpdate }) => {
                 <span className="text-sm font-mono font-bold text-blue-600">{s.groupName}</span>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2 py-0.5 rounded border border-gray-200">
-                  {s.level}
-                </span>
+                {editingId === s.id ? (
+                  <select 
+                    value={editData.level} 
+                    onChange={e => setEditData({...editData, level: e.target.value})}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                  >
+                    {Object.keys(levelPrices).map(l => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2 py-0.5 rounded border border-gray-200">
+                    {s.level}
+                  </span>
+                )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                {s.price} EGP
+                {editingId === s.id ? (
+                   <div className="flex items-center">
+                     <input 
+                       type="number" 
+                       value={editData.price} 
+                       onChange={e => setEditData({...editData, price: Number(e.target.value)})}
+                       className="border border-gray-300 rounded px-2 py-1 text-sm w-20 mr-1 focus:ring-1 focus:ring-blue-500"
+                     />
+                     <span className="text-xs text-gray-500">EGP</span>
+                   </div>
+                ) : (
+                  `${s.price} EGP`
+                )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 {editingId === s.id ? (
-                  <button onClick={() => saveEdit(s.id)} className="text-emerald-600 hover:text-emerald-900 mr-3">Save</button>
+                  <button onClick={() => saveEdit(s.id)} className="text-emerald-600 hover:text-emerald-900 mr-4 font-bold">Save</button>
                 ) : (
-                  <button onClick={() => startEdit(s)} className="text-blue-600 hover:text-blue-900 mr-3">
+                  <button onClick={() => startEdit(s)} className="text-blue-600 hover:text-blue-900 mr-4">
                     <Edit size={18} />
                   </button>
                 )}
@@ -880,7 +1028,6 @@ const SessionTable = ({ sessions, onDelete, onUpdate }) => {
   );
 };
 
-// --- أدوات التصدير ---
 const exportCSV = (sessions, period) => {
   const headers = ['Date', 'Time', 'Group Code / Name', 'Level', 'Price (EGP)'];
   
