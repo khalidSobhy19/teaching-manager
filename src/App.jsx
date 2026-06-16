@@ -593,16 +593,95 @@ export default function App() {
   const renderSchedules = () => {
     return (
       <div className="space-y-6 animate-fade-in">
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Weekly Schedules</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">Register your fixed schedules here so the system can calculate your target expected salary every month.</p>
+        {/* Header with Print Button */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 print:hidden">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Weekly Schedules</h2>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Register your fixed schedules here so the system can calculate your target expected salary every month.</p>
+          </div>
+          <button 
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors shadow-sm font-medium whitespace-nowrap"
+          >
+            <Printer size={18} />
+            <span>Print Schedule</span>
+          </button>
+        </div>
         
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">Add Fixed Schedule</h3>
-          <AddScheduleForm groups={groups} onAdd={addSchedule} />
+        {/* Interactive View - Hidden during printing */}
+        <div className="print:hidden space-y-6">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">Add Fixed Schedule</h3>
+            <AddScheduleForm groups={groups} onAdd={addSchedule} />
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
+            <InteractiveScheduleView schedules={schedules} groups={groups} onDelete={deleteSchedule} onUpdate={updateSchedule} levelsData={levelsData} />
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
-          <InteractiveScheduleView schedules={schedules} groups={groups} onDelete={deleteSchedule} onUpdate={updateSchedule} levelsData={levelsData} />
+        {/* Printable Area - Only visible when printing/saving as PDF */}
+        <div className="hidden print:block w-full text-black bg-white p-4">
+          <div className="text-center mb-8 border-b-2 border-gray-800 pb-4">
+            <h1 className="text-3xl font-extrabold text-gray-900 uppercase tracking-widest">Weekly Teaching Schedule</h1>
+            <p className="text-gray-500 mt-2 font-medium">Generated on {formatDate(new Date().toISOString())}</p>
+          </div>
+          
+          <div className="space-y-8">
+            {DAYS_OF_WEEK.map(day => {
+              const daySchedules = schedules
+                .filter(s => s.day === day)
+                .sort((a, b) => a.time.localeCompare(b.time));
+                
+              if (daySchedules.length === 0) return null;
+
+              return (
+                <div key={day} className="mb-6 break-inside-avoid">
+                  <div className="flex items-center gap-3 mb-3">
+                    <h2 className="text-xl font-bold text-gray-900 bg-gray-100 px-4 py-2 rounded-lg border border-gray-300 uppercase tracking-wider">{day}</h2>
+                    <span className="text-sm font-bold text-gray-500">{daySchedules.length} Sessions</span>
+                  </div>
+                  <table className="min-w-full border-collapse border-2 border-gray-800 rounded-lg">
+                    <thead className="bg-gray-100 border-b-2 border-gray-800">
+                      <tr>
+                        <th className="border-r border-gray-400 px-4 py-3 text-left font-extrabold text-gray-800 w-1/4 uppercase text-sm">Time</th>
+                        <th className="border-r border-gray-400 px-4 py-3 text-left font-extrabold text-gray-800 w-1/2 uppercase text-sm">Group Code / Name</th>
+                        <th className="px-4 py-3 text-center font-extrabold text-gray-800 w-1/4 uppercase text-sm">Level</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {daySchedules.map((s, index) => {
+                        const group = groups.find(g => g.id === s.groupId);
+                        return (
+                          <tr key={s.id} className={`border-b border-gray-300 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="border-r border-gray-300 px-4 py-3 font-bold text-gray-900 text-lg">
+                              {formatTime(s.time)}
+                            </td>
+                            <td className="border-r border-gray-300 px-4 py-3 font-bold text-gray-800 font-mono text-lg break-all">
+                              {group ? group.name : 'Unknown'}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {group && (
+                                <span className="px-3 py-1 bg-gray-200 border border-gray-400 rounded-md text-sm font-extrabold text-gray-800 shadow-sm">
+                                  {group.level}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+            
+            {schedules.length === 0 && (
+              <div className="text-center text-gray-500 font-bold py-10 border-2 border-dashed border-gray-400 rounded-xl">
+                No schedules defined yet. Please add schedules to print the timetable.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -683,8 +762,8 @@ export default function App() {
                   const sum = count * (levelsData[level]?.price || 0);
                   return (
                     <div key={level} className="flex justify-between items-center text-sm bg-white dark:bg-gray-800 p-2 rounded shadow-sm border dark:border-gray-700">
-                      <span style={getLevelStyle(level, levelsData)} className="font-bold px-2 py-0.5 rounded text-xs w-auto pe-4">{level}</span>
-                      <span className="text-gray-500 dark:text-gray-400"> {count}  sessions </span>
+                      <span style={getLevelStyle(level, levelsData)} className="font-bold px-2 py-0.5 rounded text-xs w-auto pe-4">Level {level}</span>
+                      <span className="text-gray-500 dark:text-gray-400">{count} sessions</span>
                       <span className="font-bold text-gray-900 dark:text-white text-right w-24">{sum} EGP</span>
                     </div>
                   );
