@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Calendar, FileText, DollarSign, PlusCircle, 
-  Trash2, Edit, Download, Printer, Home, CheckCircle, XCircle, Clock, TrendingUp
+  Trash2, Edit, Download, Printer, Home, CheckCircle, XCircle, Clock, TrendingUp, Sun, Moon
 } from 'lucide-react';
 
-// --- الثوابت ---
-const DAYS_OF_WEEK = [
-  'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
-];
+const DAYS_OF_WEEK = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-// --- دوال المساعدة ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const getLocalYYYYMMDD = (date = new Date()) => {
@@ -19,31 +15,57 @@ const getLocalYYYYMMDD = (date = new Date()) => {
   return `${y}-${m}-${d}`;
 };
 
-const getSalaryPeriod = (date = new Date()) => {
-  const d = new Date(date);
+const getPeriodInfo = (dateObj = new Date()) => {
+  const d = new Date(dateObj);
+  let year = d.getFullYear();
+  let month = d.getMonth();
   const day = d.getDate();
-  let startMonth = d.getMonth();
-  let startYear = d.getFullYear();
-  let endMonth = d.getMonth();
-  let endYear = d.getFullYear();
 
-  if (day <= 25) {
-    startMonth -= 1;
-    if (startMonth < 0) {
-      startMonth = 11;
-      startYear -= 1;
-    }
-  } else {
-    endMonth += 1;
-    if (endMonth > 11) {
-      endMonth = 0;
-      endYear += 1;
+  if (day > 25) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
     }
   }
 
+  const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+  
+  let startMonth = month - 1;
+  let startYear = year;
+  if (startMonth < 0) {
+    startMonth = 11;
+    startYear -= 1;
+  }
+
   const start = new Date(startYear, startMonth, 26, 0, 0, 0, 0);
-  const end = new Date(endYear, endMonth, 25, 23, 59, 59, 999);
-  return { start, end };
+  const end = new Date(year, month, 25, 23, 59, 59, 999);
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const label = `${monthNames[month]} ${year} Salary`;
+
+  return { key, start, end, label };
+};
+
+const getPeriodInfoFromKey = (key) => {
+  const [y, m] = key.split('-');
+  const year = parseInt(y, 10);
+  const month = parseInt(m, 10) - 1;
+
+  let startMonth = month - 1;
+  let startYear = year;
+  if (startMonth < 0) {
+    startMonth = 11;
+    startYear -= 1;
+  }
+
+  const start = new Date(startYear, startMonth, 26, 0, 0, 0, 0);
+  const end = new Date(year, month, 25, 23, 59, 59, 999);
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const label = `${monthNames[month]} ${year} Salary`;
+
+  return { key, start, end, label };
 };
 
 const formatDate = (dateString) => {
@@ -60,18 +82,54 @@ const formatTime = (timeString) => {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 };
 
-// --- التطبيق الأساسي ---
+const getWeekdaysCount = (startDate, endDate, dayNameEn) => {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const targetDay = days.indexOf(dayNameEn);
+  if (targetDay === -1) return 0;
+
+  let count = 0;
+  let current = new Date(startDate);
+  current.setHours(0,0,0,0);
+  const end = new Date(endDate);
+  end.setHours(23,59,59,999);
+
+  while (current <= end) {
+    if (current.getDay() === targetDay) count++;
+    current.setDate(current.getDate() + 1);
+  }
+  return count;
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toast, setToast] = useState(null);
 
-  // --- التحميل الآمن من LocalStorage ---
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('teachingTheme');
+      if (saved) return saved === 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch (e) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('teachingTheme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
   const [levelPrices, setLevelPrices] = useState(() => {
     try {
       const saved = localStorage.getItem('teachingLevelPrices');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return { Q1: 110, Q2: 110, Q3: 120 }; 
+    return { Q1: 110, Q2: 110, Q3: 120 };
   });
 
   const [groups, setGroups] = useState(() => {
@@ -98,75 +156,89 @@ export default function App() {
     return [];
   });
 
-  // --- الحفظ في LocalStorage ---
-  useEffect(() => {
-    localStorage.setItem('teachingLevelPrices', JSON.stringify(levelPrices));
-  }, [levelPrices]);
-
-  useEffect(() => {
-    localStorage.setItem('teachingGroups', JSON.stringify(groups));
-  }, [groups]);
-
-  useEffect(() => {
-    localStorage.setItem('teachingSessions', JSON.stringify(sessions));
-  }, [sessions]);
-
-  useEffect(() => {
-    localStorage.setItem('teachingSchedules', JSON.stringify(schedules));
-  }, [schedules]);
+  useEffect(() => localStorage.setItem('teachingLevelPrices', JSON.stringify(levelPrices)), [levelPrices]);
+  useEffect(() => localStorage.setItem('teachingGroups', JSON.stringify(groups)), [groups]);
+  useEffect(() => localStorage.setItem('teachingSessions', JSON.stringify(sessions)), [sessions]);
+  useEffect(() => localStorage.setItem('teachingSchedules', JSON.stringify(schedules)), [schedules]);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  // --- البيانات المشتقة ---
-  const currentPeriod = useMemo(() => getSalaryPeriod(), []);
-  
-  const currentPeriodSessions = useMemo(() => {
+  const availablePeriods = useMemo(() => {
+    const periodsMap = new Map();
+    const current = getPeriodInfo();
+    periodsMap.set(current.key, current);
+
+    sessions.forEach(s => {
+      const p = getPeriodInfo(new Date(s.date));
+      if (!periodsMap.has(p.key)) {
+        periodsMap.set(p.key, p);
+      }
+    });
+    return Array.from(periodsMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+  }, [sessions]);
+
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState(() => getPeriodInfo().key);
+
+  const activePeriod = useMemo(() => {
+    return availablePeriods.find(p => p.key === selectedPeriodKey) || getPeriodInfoFromKey(selectedPeriodKey);
+  }, [selectedPeriodKey, availablePeriods]);
+
+  const activePeriodSessions = useMemo(() => {
     return sessions.filter(session => {
       const d = new Date(session.date);
-      return d >= currentPeriod.start && d <= currentPeriod.end;
+      return d >= activePeriod.start && d <= activePeriod.end;
     });
-  }, [sessions, currentPeriod]);
+  }, [sessions, activePeriod]);
 
-  // حساب الراتب المتوقع بناءً على الجدول الزمني
-  const projectedStats = useMemo(() => {
-    // 1. حساب عدد تكرار كل يوم في فترة الراتب الحالية
-    const dayCounts = {};
-    const jsDaysMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    DAYS_OF_WEEK.forEach(d => dayCounts[d] = 0);
 
-    let currentDate = new Date(currentPeriod.start);
-    currentDate.setHours(12, 0, 0, 0); // أمان من فرق التوقيت
-    const endDate = new Date(currentPeriod.end);
-    endDate.setHours(12, 0, 0, 0);
+  const addLevel = (name, price) => {
+    if (!name) return;
+    const upperName = name.toUpperCase();
+    if (levelPrices[upperName]) {
+      showToast('Level name already exists!', 'error');
+      return;
+    }
+    setLevelPrices(prev => ({ ...prev, [upperName]: parseInt(price) || 0 }));
+    showToast('Level added successfully');
+  };
 
-    while (currentDate <= endDate) {
-      const dayName = jsDaysMap[currentDate.getDay()];
-      if (dayCounts[dayName] !== undefined) {
-        dayCounts[dayName] += 1;
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
+  const editLevel = (oldName, newName, newPrice) => {
+    const upperNewName = newName.toUpperCase();
+    if (oldName !== upperNewName && levelPrices[upperNewName]) {
+      showToast('This new name already exists in levels!', 'error');
+      return;
     }
 
-    // 2. حساب إجمالي الحصص المتوقعة والراتب المتوقع
-    let targetSessions = 0;
-    let targetSalary = 0;
-
-    schedules.forEach(schedule => {
-      const occurrences = dayCounts[schedule.day] || 0;
-      const group = groups.find(g => g.id === schedule.groupId);
-      if (group) {
-        targetSessions += occurrences;
-        targetSalary += (occurrences * group.price);
-      }
+    setLevelPrices(prev => {
+      const updated = { ...prev };
+      delete updated[oldName];
+      updated[upperNewName] = parseInt(newPrice) || 0;
+      return updated;
     });
 
-    return { targetSessions, targetSalary };
-  }, [currentPeriod, schedules, groups]);
+    if (oldName !== upperNewName) {
+      setGroups(groups.map(g => g.level === oldName ? { ...g, level: upperNewName } : g));
+      setSessions(sessions.map(s => s.level === oldName ? { ...s, level: upperNewName } : s));
+    }
+    showToast('Level updated successfully');
+  };
 
-  // --- الإجراءات (Actions) ---
+  const deleteLevel = (name) => {
+    if (groups.some(g => g.level === name) || sessions.some(s => s.level === name)) {
+      showToast('Cannot delete level used by existing groups or sessions.', 'error');
+      return;
+    }
+    setLevelPrices(prev => {
+      const updated = { ...prev };
+      delete updated[name];
+      return updated;
+    });
+    showToast('Level deleted');
+  };
+
   const addGroup = (groupData) => {
     if (groups.some(g => g.code.toLowerCase() === groupData.code.toLowerCase())) {
       showToast('Group code already exists!', 'error');
@@ -178,12 +250,12 @@ export default function App() {
 
   const updateGroup = (id, updatedData) => {
     setGroups(groups.map(g => g.id === id ? { ...g, ...updatedData } : g));
-    showToast('Group updated successfully');
+    showToast('Group updated');
   };
 
   const deleteGroup = (id) => {
     if (sessions.some(s => s.groupId === id)) {
-      showToast('Cannot delete group with existing sessions.', 'error');
+      showToast('Cannot delete a group with recorded sessions.', 'error');
       return;
     }
     setSchedules(schedules.filter(s => s.groupId !== id));
@@ -193,7 +265,7 @@ export default function App() {
 
   const addSchedule = (scheduleData) => {
     if (schedules.some(s => s.groupId === scheduleData.groupId && s.day === scheduleData.day && s.time === scheduleData.time)) {
-      showToast('This exact schedule already exists!', 'error');
+      showToast('This schedule already exists!', 'error');
       return;
     }
     setSchedules([...schedules, { ...scheduleData, id: generateId() }]);
@@ -202,7 +274,7 @@ export default function App() {
 
   const updateSchedule = (id, updatedData) => {
     setSchedules(schedules.map(s => s.id === id ? { ...s, ...updatedData } : s));
-    showToast('Schedule updated successfully');
+    showToast('Schedule updated');
   };
 
   const deleteSchedule = (id) => {
@@ -222,16 +294,25 @@ export default function App() {
       sessionDate.setHours(12, 0, 0, 0);
     }
 
-    let level = 'Q1'; 
+    // Default to the first available level, or 'Q1'
+    const availableLevelKeys = Object.keys(levelPrices);
+    let level = availableLevelKeys.length > 0 ? availableLevelKeys[0] : 'Q1'; 
     let isSmartCode = codeStr.includes('.');
     let parsedTime = null;
 
     if (isSmartCode) {
       const parts = codeStr.split('.');
+      const lowerLevelKeys = availableLevelKeys.map(k => k.toLowerCase());
+
       parts.forEach(part => {
         const lowerPart = part.toLowerCase();
-        if (['q1', 'q2', 'q3'].includes(lowerPart)) {
-          level = lowerPart.toUpperCase();
+        
+        // Dynamically check against ALL currently defined levels
+        if (lowerLevelKeys.includes(lowerPart)) {
+          const actualKey = availableLevelKeys.find(k => k.toLowerCase() === lowerPart);
+          level = actualKey;
+        } else if (/^\d{8}$/.test(part)) {
+          // Date already handled
         } else if (/^\d{1,2}(am|pm)$/.test(lowerPart) || lowerPart === 'am' || lowerPart === 'pm') {
           parsedTime = lowerPart; 
         }
@@ -258,7 +339,7 @@ export default function App() {
           name: finalGroupCode,
           code: finalGroupCode,
           level: level,
-          price: levelPrices[level] || 110 
+          price: levelPrices[level] || 0
         };
         setGroups(prev => [...prev, group]);
       } else {
@@ -266,7 +347,7 @@ export default function App() {
         return false;
       }
     } else if (isSmartCode) {
-      group = { ...group, level: level, price: levelPrices[level] || 110 };
+      group = { ...group, level: level, price: levelPrices[level] || group.price };
     }
 
     const newSession = {
@@ -285,107 +366,119 @@ export default function App() {
     return true;
   };
 
-  const updateSession = (id, updatedData) => {
-    setSessions(sessions.map(s => s.id === id ? { ...s, ...updatedData } : s));
-    showToast('Session updated');
-  };
-
   const deleteSession = (id) => {
     setSessions(sessions.filter(s => s.id !== id));
     showToast('Session deleted');
   };
 
-  // --- الواجهات (Views) ---
+  const updateSession = (id, updatedData) => {
+    setSessions(sessions.map(s => s.id === id ? { ...s, ...updatedData } : s));
+    showToast('Session updated');
+  };
+
+  const renderPeriodSelector = () => (
+    <div className="flex flex-col sm:flex-row items-center gap-4 mb-6 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 transition-colors">
+      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-bold bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
+        <Calendar size={20} className="text-blue-600 dark:text-blue-400" />
+        <span>Period Archive:</span>
+      </div>
+      <select
+        value={selectedPeriodKey}
+        onChange={(e) => setSelectedPeriodKey(e.target.value)}
+        className="flex-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 cursor-pointer shadow-sm transition-all"
+      >
+        {availablePeriods.map(p => (
+          <option key={p.key} value={p.key}>
+            {p.label} ({formatDate(p.start)} to {formatDate(p.end)})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
   const renderDashboard = () => {
-    const totalSalary = currentPeriodSessions.reduce((sum, s) => sum + s.price, 0);
-    const sessionsByLevel = currentPeriodSessions.reduce((acc, s) => {
+    const actualSalary = activePeriodSessions.reduce((sum, s) => sum + s.price, 0);
+    const actualSessionsCount = activePeriodSessions.length;
+
+    let targetSalary = 0;
+    let targetSessionsCount = 0;
+    
+    schedules.forEach(schedule => {
+      const group = groups.find(g => g.id === schedule.groupId);
+      if (group) {
+        const countInPeriod = getWeekdaysCount(activePeriod.start, activePeriod.end, schedule.day);
+        targetSessionsCount += countInPeriod;
+        targetSalary += countInPeriod * group.price;
+      }
+    });
+
+    const progressPercentage = targetSalary > 0 ? Math.min(100, Math.round((actualSalary / targetSalary) * 100)) : 0;
+
+    const sessionsByLevel = activePeriodSessions.reduce((acc, s) => {
       acc[s.level] = (acc[s.level] || 0) + 1;
       return acc;
     }, {});
 
-    // نسبة التقدم
-    const progressPercent = projectedStats.targetSalary > 0 
-      ? Math.min(100, Math.round((totalSalary / projectedStats.targetSalary) * 100)) 
-      : 0;
-
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
-          <h2 className="text-2xl font-bold text-gray-800">Overview & Projections</h2>
-          <span className="text-sm font-medium bg-white px-3 py-1 border border-gray-200 rounded-full text-gray-600 shadow-sm">
-            {formatDate(currentPeriod.start)} - {formatDate(currentPeriod.end)}
-          </span>
-        </div>
-
-        {/* كروت التوقعات (Projections) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl shadow-md text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <TrendingUp size={80} />
-            </div>
-            <h3 className="text-slate-300 font-medium mb-1">Target Salary (From Schedules)</h3>
-            <div className="flex items-end gap-2">
-              <span className="text-4xl font-bold text-white">{projectedStats.targetSalary}</span>
-              <span className="text-lg text-slate-400 mb-1">EGP</span>
-            </div>
-            <p className="text-sm text-slate-400 mt-2">
-              Based on {projectedStats.targetSessions} scheduled sessions this period.
-            </p>
+      <div className="space-y-6 animate-fade-in">
+        {renderPeriodSelector()}
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-xl shadow-md text-white relative overflow-hidden">
+            <TrendingUp className="absolute top-4 right-4 opacity-20" size={80} />
+            <h3 className="text-blue-100 font-medium mb-1">Target Expected Salary</h3>
+            <div className="text-4xl font-bold mb-2">{targetSalary} <span className="text-xl font-normal">EGP</span></div>
+            <p className="text-sm text-blue-200">Based on {targetSessionsCount} scheduled sessions.</p>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center relative overflow-hidden">
-            <h3 className="text-gray-500 font-medium mb-1">Current Earned Salary</h3>
-            <div className="flex items-end gap-2 mb-4">
-              <span className="text-4xl font-bold text-emerald-600">{totalSalary}</span>
-              <span className="text-lg text-gray-400 mb-1">EGP</span>
-            </div>
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 relative overflow-hidden transition-colors">
+            <DollarSign className="absolute top-4 right-4 text-emerald-100 dark:text-emerald-900/30" size={80} />
+            <h3 className="text-gray-500 dark:text-gray-400 font-medium mb-1">Actual Current Salary</h3>
+            <div className="text-4xl font-bold text-gray-900 dark:text-white mb-2">{actualSalary} <span className="text-xl font-normal text-gray-600 dark:text-gray-300">EGP</span></div>
             
-            {/* شريط التقدم */}
-            <div className="w-full bg-gray-100 rounded-full h-2.5 mb-1">
-              <div 
-                className="bg-emerald-500 h-2.5 rounded-full transition-all duration-1000 ease-out" 
-                style={{ width: `${progressPercent}%` }}
-              ></div>
-            </div>
-            <div className="flex justify-between text-xs font-medium text-gray-500">
-              <span>{progressPercent}% Achieved</span>
-              <span>{projectedStats.targetSalary > totalSalary ? `${projectedStats.targetSalary - totalSalary} EGP left` : 'Target Met! 🎉'}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center space-x-4">
-            <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-              <Calendar size={24} />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 font-medium">Completed Sessions</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-bold text-gray-900">{currentPeriodSessions.length}</p>
-                <p className="text-xs text-gray-400">/ {projectedStats.targetSessions} expected</p>
+            <div className="mt-4">
+              <div className="flex justify-between text-sm mb-1 font-medium">
+                <span className="text-gray-600 dark:text-gray-400">Progress</span>
+                <span className={progressPercentage >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}>{progressPercentage}%</span>
+              </div>
+              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5">
+                <div 
+                  className={`h-2.5 rounded-full transition-all duration-1000 ${progressPercentage >= 100 ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                  style={{ width: `${progressPercentage}%` }}
+                ></div>
               </div>
             </div>
           </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-sm text-gray-500 font-medium mb-2">Sessions Breakdown</p>
-            <div className="space-y-2">
-              {Object.keys(levelPrices).map(level => (
-                <div key={level} className="flex justify-between items-center text-sm">
-                  <span className="font-medium text-gray-700">{level}</span>
-                  <span className="text-gray-900 bg-gray-100 px-2 py-1 rounded-md">
-                    {sessionsByLevel[level] || 0} sessions
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Quick Add Session</h3>
-          <QuickAddSession onAdd={addSessionByCode} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
+            <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100 flex items-center gap-2">
+              <PlusCircle size={20} className="text-blue-600 dark:text-blue-400" />
+              Quick Add Session
+            </h3>
+            <QuickAddSession onAdd={addSessionByCode} levelPrices={levelPrices} />
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 transition-colors">
+            <h3 className="text-lg font-bold mb-4 text-gray-800 dark:text-gray-100 flex items-center gap-2">
+              <Users size={20} className="text-blue-600 dark:text-blue-400" />
+              Sessions by Level
+            </h3>
+            <div className="space-y-3">
+              {Object.keys(levelPrices).map(level => {
+                const count = sessionsByLevel[level] || 0;
+                return (
+                  <div key={level} className="flex justify-between items-center text-sm p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 transition-colors">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 px-3 py-1 rounded shadow-sm border dark:border-gray-700">Level {level}</span>
+                    <span className="text-gray-900 dark:text-gray-100 font-medium">
+                      {count} sessions <span className="text-gray-400 dark:text-gray-600 mx-1">|</span> {count * levelPrices[level]} EGP
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -393,35 +486,23 @@ export default function App() {
 
   const renderGroups = () => {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-800">Manage Groups & Levels</h2>
+      <div className="space-y-6 animate-fade-in">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Manage Levels & Groups</h2>
         
-        {/* إعدادات أسعار المستويات */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Default Level Prices</h3>
-          <div className="flex flex-wrap gap-4">
-            {Object.keys(levelPrices).map(level => (
-              <div key={level} className="flex-1 min-w-[120px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">{level} Price (EGP)</label>
-                <input
-                  type="number"
-                  value={levelPrices[level]}
-                  onChange={(e) => setLevelPrices({ ...levelPrices, [level]: Number(e.target.value) })}
-                  className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-gray-50"
-                />
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-500 mt-3">* Changes here will automatically apply to newly added sessions and groups.</p>
-        </div>
+        <LevelsManager 
+          levelPrices={levelPrices} 
+          onAdd={addLevel} 
+          onEdit={editLevel} 
+          onDelete={deleteLevel} 
+        />
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Add New Group</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">Add New Group</h3>
           <AddGroupForm onAdd={addGroup} levelPrices={levelPrices} />
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <GroupTable groups={groups} onDelete={deleteGroup} onUpdate={updateGroup} levelPrices={levelPrices} />
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
+          <GroupsTable groups={groups} onDelete={deleteGroup} onUpdate={updateGroup} levelPrices={levelPrices} />
         </div>
       </div>
     );
@@ -429,15 +510,16 @@ export default function App() {
 
   const renderSchedules = () => {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-800">Weekly Schedules</h2>
+      <div className="space-y-6 animate-fade-in">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Weekly Schedules</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">Register your fixed schedules here so the system can calculate your target expected salary every month.</p>
         
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Add New Schedule</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">Add Fixed Schedule</h3>
           <AddScheduleForm groups={groups} onAdd={addSchedule} />
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
           <InteractiveScheduleView schedules={schedules} groups={groups} onDelete={deleteSchedule} onUpdate={updateSchedule} />
         </div>
       </div>
@@ -446,10 +528,16 @@ export default function App() {
 
   const renderHistory = () => {
     return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold text-gray-800">Session History</h2>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <SessionTable sessions={sessions} onDelete={deleteSession} onUpdate={updateSession} levelPrices={levelPrices} />
+      <div className="space-y-6 animate-fade-in">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Session History</h2>
+        {renderPeriodSelector()}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
+          <SessionTable 
+            sessions={activePeriodSessions} 
+            onDelete={deleteSession} 
+            onUpdate={updateSession}
+            levelPrices={levelPrices}
+          />
         </div>
       </div>
     );
@@ -457,20 +545,20 @@ export default function App() {
 
   const renderReport = () => {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center flex-wrap gap-4">
-          <h2 className="text-2xl font-bold text-gray-800">Salary Report</h2>
-          <div className="flex space-x-3 print:hidden">
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Financial Report</h2>
+          <div className="flex gap-3 print:hidden">
             <button 
-              onClick={() => exportCSV(currentPeriodSessions, currentPeriod)}
-              className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+              onClick={() => exportCSV(activePeriodSessions, activePeriod)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm font-medium"
             >
               <Download size={18} />
-              <span>Excel (CSV)</span>
+              <span>Export Excel</span>
             </button>
             <button 
               onClick={() => window.print()}
-              className="flex items-center space-x-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-800 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors shadow-sm font-medium"
             >
               <Printer size={18} />
               <span>Print PDF</span>
@@ -478,41 +566,44 @@ export default function App() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 print:shadow-none print:border-none print:p-0">
+        {renderPeriodSelector()}
+
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 print:shadow-none print:border-none print:p-0 transition-colors">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Teaching Salary Report</h1>
-            <p className="text-lg text-gray-600 mt-2">
-              Period: {formatDate(currentPeriod.start)} to {formatDate(currentPeriod.end)}
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Salary & Sessions Report</h1>
+            <p className="text-lg text-gray-600 dark:text-gray-300 mt-2 font-medium bg-gray-100 dark:bg-gray-700 inline-block px-4 py-1 rounded-full border dark:border-gray-600">
+              {activePeriod.label} ({formatDate(activePeriod.start)} to {formatDate(activePeriod.end)})
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-8 mb-8">
-            <div className="bg-gray-50 p-6 rounded-lg print:border print:border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-700 border-b pb-2 mb-4">Summary</h3>
+            <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-lg print:border print:border-gray-200 border dark:border-gray-700">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700 pb-2 mb-4">Summary</h3>
               <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Sessions:</span>
-                  <span className="font-bold text-gray-900">{currentPeriodSessions.length}</span>
+                <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-2">
+                  <span className="text-gray-600 dark:text-gray-400 font-medium">Total Sessions Recorded:</span>
+                  <span className="font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-800 px-3 py-1 rounded shadow-sm border dark:border-gray-700">{activePeriodSessions.length}</span>
                 </div>
-                <div className="flex justify-between text-lg">
-                  <span className="text-gray-800 font-semibold">Total Salary:</span>
-                  <span className="font-bold text-emerald-600">
-                    {currentPeriodSessions.reduce((sum, s) => sum + s.price, 0)} EGP
+                <div className="flex justify-between items-center text-lg pt-2">
+                  <span className="text-gray-800 dark:text-gray-200 font-bold">Total Actual Salary:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-4 py-1 rounded-lg border border-emerald-100 dark:border-emerald-800">
+                    {activePeriodSessions.reduce((sum, s) => sum + s.price, 0)} EGP
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-gray-50 p-6 rounded-lg print:border print:border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-700 border-b pb-2 mb-4">Breakdown by Level</h3>
+            <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-lg print:border print:border-gray-200 border dark:border-gray-700">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700 pb-2 mb-4">Breakdown by Level</h3>
               <div className="space-y-2">
                 {Object.keys(levelPrices).map(level => {
-                  const count = currentPeriodSessions.filter(s => s.level === level).length;
-                  const sum = currentPeriodSessions.filter(s => s.level === level).reduce((acc, s) => acc + s.price, 0);
+                  const count = activePeriodSessions.filter(s => s.level === level).length;
+                  const sum = count * levelPrices[level];
                   return (
-                    <div key={level} className="flex justify-between text-sm">
-                      <span className="text-gray-600">{level}:</span>
-                      <span className="font-medium text-gray-900">{count} sessions = {sum} EGP</span>
+                    <div key={level} className="flex justify-between items-center text-sm bg-white dark:bg-gray-800 p-2 rounded shadow-sm border dark:border-gray-700">
+                      <span className="font-bold text-gray-700 dark:text-gray-300 w-auto pe-4">Level {level}:</span>
+                      <span className="text-gray-500 dark:text-gray-400">{count} sessions</span>
+                      <span className="font-bold text-gray-900 dark:text-white text-right w-24">{sum} EGP</span>
                     </div>
                   );
                 })}
@@ -520,27 +611,27 @@ export default function App() {
             </div>
           </div>
 
-          <h3 className="text-xl font-bold text-gray-800 mb-4">Session Log</h3>
-          <table className="min-w-full divide-y divide-gray-200 border">
-            <thead className="bg-gray-50">
+          <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-4">Detailed Session Log</h3>
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border dark:border-gray-700 rounded-lg overflow-hidden">
+            <thead className="bg-gray-100 dark:bg-gray-900">
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Group</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase">Group Code</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase">Level</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-400 uppercase">Amount</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {[...currentPeriodSessions].sort((a,b) => new Date(a.date) - new Date(b.date)).map(s => (
-                <tr key={s.id}>
-                  <td className="px-4 py-2 text-sm text-gray-900">{formatDate(s.date)}</td>
-                  <td className="px-4 py-2 text-sm text-gray-900">{s.groupName}</td>
-                  <td className="px-4 py-2 text-sm text-gray-500">{s.level}</td>
-                  <td className="px-4 py-2 text-sm text-gray-900 text-right">{s.price} EGP</td>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {[...activePeriodSessions].sort((a,b) => new Date(a.date) - new Date(b.date)).map(s => (
+                <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-300 font-medium">{formatDate(s.date)}</td>
+                  <td className="px-4 py-3 text-sm text-blue-600 dark:text-blue-400 font-mono font-bold break-all">{s.groupName}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"><span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{s.level}</span></td>
+                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 font-bold text-right">{s.price} EGP</td>
                 </tr>
               ))}
-              {currentPeriodSessions.length === 0 && (
-                <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500">No sessions recorded in this period.</td></tr>
+              {activePeriodSessions.length === 0 && (
+                <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500 dark:text-gray-400 font-medium">No sessions recorded in this period.</td></tr>
               )}
             </tbody>
           </table>
@@ -550,23 +641,41 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-gray-900">
-      <nav className="bg-white shadow-sm border-b border-gray-200 print:hidden sticky top-0 z-10">
+    <div className="min-h-screen bg-slate-50 dark:bg-gray-950 font-sans text-gray-900 dark:text-gray-100 pb-12 transition-colors duration-200">
+      <nav className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800 print:hidden sticky top-0 z-20 transition-colors">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center space-x-2">
-              <div className="bg-blue-600 p-2 rounded-lg text-white">
-                <Users size={24} />
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:h-16 gap-4 py-4 sm:py-0">
+            <div className="flex items-center gap-3 justify-between w-full sm:w-auto">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-600 p-2.5 rounded-xl text-white shadow-sm">
+                  <Users size={22} />
+                </div>
+                <span className="font-extrabold text-2xl tracking-tight text-gray-900 dark:text-white">TeachFlow</span>
               </div>
-              <span className="font-bold text-xl tracking-tight text-gray-900">TeachFlow</span>
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-2 sm:hidden rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"
+              >
+                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
             </div>
             
-            <div className="flex space-x-1 sm:space-x-4 items-center overflow-x-auto no-scrollbar">
+            <div className="flex gap-2 items-center overflow-x-auto no-scrollbar pb-2 sm:pb-0">
               <NavButton icon={<Home size={18} />} label="Dashboard" isActive={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
               <NavButton icon={<PlusCircle size={18} />} label="Groups" isActive={activeTab === 'groups'} onClick={() => setActiveTab('groups')} />
               <NavButton icon={<Clock size={18} />} label="Schedules" isActive={activeTab === 'schedules'} onClick={() => setActiveTab('schedules')} />
               <NavButton icon={<Calendar size={18} />} label="History" isActive={activeTab === 'history'} onClick={() => setActiveTab('history')} />
               <NavButton icon={<FileText size={18} />} label="Report" isActive={activeTab === 'report'} onClick={() => setActiveTab('report')} />
+              
+              <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-2 hidden sm:block"></div>
+              
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="hidden sm:flex p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                title="Toggle Dark Mode"
+              >
+                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
             </div>
           </div>
         </div>
@@ -581,44 +690,149 @@ export default function App() {
       </main>
 
       {toast && (
-        <div className={`fixed bottom-4 right-4 flex items-center space-x-2 px-6 py-3 rounded-lg shadow-lg text-white animate-fade-in-up print:hidden ${
-          toast.type === 'error' ? 'bg-red-500' : 'bg-gray-900'
+        <div className={`fixed bottom-4 right-4 flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl text-white animate-fade-in-up print:hidden z-50 ${
+          toast.type === 'error' ? 'bg-red-500' : 'bg-gray-900 dark:bg-gray-100 dark:text-gray-900'
         }`}>
-          {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle size={20} />}
-          <span className="font-medium">{toast.message}</span>
+          {toast.type === 'error' ? <XCircle size={22} /> : <CheckCircle size={22} />}
+          <span className="font-bold text-sm">{toast.message}</span>
         </div>
       )}
     </div>
   );
 }
 
-// --- المكونات الفرعية ---
 const NavButton = ({ icon, label, isActive, onClick }) => (
   <button
     onClick={onClick}
-    className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${
       isActive 
-        ? 'bg-blue-50 text-blue-700' 
-        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 shadow-sm' 
+        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
     }`}
   >
     {icon}
-    <span className="hidden sm:inline">{label}</span>
+    <span>{label}</span>
   </button>
 );
 
+const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
+  const [newName, setNewName] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+  
+  const [editingKey, setEditingKey] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+
+  const handleAdd = (e) => {
+    e.preventDefault();
+    onAdd(newName, newPrice);
+    setNewName('');
+    setNewPrice('');
+  };
+
+  const startEdit = (key, price) => {
+    setEditingKey(key);
+    setEditName(key);
+    setEditPrice(price);
+  };
+
+  const saveEdit = () => {
+    onEdit(editingKey, editName, editPrice);
+    setEditingKey(null);
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-gray-900 to-gray-800 dark:from-black dark:to-gray-900 rounded-xl shadow-sm p-6 text-white transition-colors">
+      <h3 className="text-lg font-semibold mb-4 text-gray-100 flex items-center gap-2">
+        <DollarSign size={20} className="text-yellow-400"/>
+        Level Definitions & Prices
+      </h3>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        {Object.entries(levelPrices).map(([level, price]) => (
+          <div key={level} className="bg-white/10 p-4 rounded-lg flex flex-col gap-3 backdrop-blur-sm border border-white/10">
+            {editingKey === level ? (
+              <div className="flex flex-col gap-2">
+                <input 
+                  type="text" value={editName} onChange={e => setEditName(e.target.value.toUpperCase())}
+                  className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1 rounded outline-none font-bold text-sm uppercase" placeholder="Level Name"
+                />
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)}
+                    className="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1 rounded outline-none font-bold text-sm" placeholder="Price"
+                  />
+                  <span className="text-xs text-gray-300">EGP</span>
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <button onClick={saveEdit} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-1 rounded transition-colors">Save</button>
+                  <button onClick={() => setEditingKey(null)} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-xs font-bold py-1 rounded transition-colors">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-xl">{level}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-lg text-yellow-300">{price}</span>
+                    <span className="text-xs text-gray-300">EGP</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => startEdit(level, price)} className="text-blue-300 hover:text-white transition-colors"><Edit size={16}/></button>
+                  <button onClick={() => onDelete(level)} className="text-red-300 hover:text-white transition-colors"><Trash2 size={16}/></button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3 items-end bg-black/20 p-4 rounded-lg border border-white/5">
+        <div className="flex-1 w-full">
+          <label className="block text-xs font-bold text-gray-300 mb-1">New Level Name</label>
+          <input 
+            type="text" required value={newName} onChange={e => setNewName(e.target.value.toUpperCase())}
+            className="w-full rounded-lg border border-gray-600 bg-white/10 text-white px-3 py-2 outline-none uppercase font-bold focus:border-blue-400 transition-colors"
+            placeholder="e.g., Q4, PRIMARY..."
+          />
+        </div>
+        <div className="flex-1 w-full sm:w-32">
+          <label className="block text-xs font-bold text-gray-300 mb-1">Price (EGP)</label>
+          <input 
+            type="number" required value={newPrice} onChange={e => setNewPrice(e.target.value)}
+            className="w-full rounded-lg border border-gray-600 bg-white/10 text-white px-3 py-2 outline-none font-bold focus:border-blue-400 transition-colors"
+            placeholder="0"
+          />
+        </div>
+        <button type="submit" className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-500 font-bold transition-colors">
+          Add Level
+        </button>
+      </form>
+    </div>
+  );
+};
+
 const AddGroupForm = ({ onAdd, levelPrices }) => {
   const [code, setCode] = useState('');
-  const [level, setLevel] = useState('Q1');
+  const availableLevels = Object.keys(levelPrices);
+  const [level, setLevel] = useState(availableLevels.length > 0 ? availableLevels[0] : '');
+
+  // Update default level if levels change
+  useEffect(() => {
+    if (!availableLevels.includes(level) && availableLevels.length > 0) {
+      setLevel(availableLevels[0]);
+    }
+  }, [availableLevels, level]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!code) return;
+    if (!code || !level) return;
     onAdd({
       name: code.trim(), 
       code: code.trim(),
       level,
-      price: levelPrices[level] || 110
+      price: levelPrices[level] || 0
     });
     setCode('');
   };
@@ -626,124 +840,106 @@ const AddGroupForm = ({ onAdd, levelPrices }) => {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4 items-end">
       <div className="flex-1 w-full">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Group Code / Name</label>
+        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Group Code</label>
         <input 
           type="text" required
           value={code} onChange={e => setCode(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none uppercase font-mono"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none uppercase font-mono transition-colors"
           placeholder="e.g., 3C.SR.PRI.Q2..."
         />
       </div>
-      <div className="w-full sm:w-32">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Level</label>
+      <div className="w-full sm:w-40">
+        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Level</label>
         <select 
+          required
           value={level} onChange={e => setLevel(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none font-semibold transition-colors"
         >
-          {Object.keys(levelPrices).map(l => (
-            <option key={l} value={l}>{l} ({levelPrices[l]})</option>
-          ))}
+          {availableLevels.length === 0 && <option value="" disabled>No Levels</option>}
+          {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
       </div>
       <button 
-        type="submit"
-        className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 font-medium"
+        type="submit" disabled={availableLevels.length === 0}
+        className="w-full sm:w-auto bg-blue-600 text-white px-8 py-2.5 rounded-lg hover:bg-blue-700 font-bold transition-colors shadow-sm disabled:opacity-50"
       >
-        Add Group
+        Save Group
       </button>
     </form>
   );
 };
 
-const GroupTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
+const GroupsTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
+  const availableLevels = Object.keys(levelPrices);
 
   const startEdit = (group) => {
     setEditingId(group.id);
-    setEditData({ ...group });
+    setEditData({ code: group.code, level: group.level, price: group.price });
   };
 
-  const saveEdit = () => {
-    onUpdate(editingId, editData);
+  const saveEdit = (id) => {
+    onUpdate(id, { name: editData.code, ...editData });
     setEditingId(null);
   };
 
   if (groups.length === 0) {
-    return <div className="p-8 text-center text-gray-500">No groups added yet.</div>;
+    return <div className="p-8 text-center text-gray-500 dark:text-gray-400 font-medium">No groups registered yet.</div>;
   }
 
   return (
-    <table className="min-w-full divide-y divide-gray-200">
-      <thead className="bg-gray-50">
-        <tr>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Group Name</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price/Session</th>
-          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-        </tr>
-      </thead>
-      <tbody className="bg-white divide-y divide-gray-200">
-        {groups.map(g => (
-          <tr key={g.id} className="hover:bg-gray-50 transition-colors">
-            <td className="px-6 py-4 whitespace-nowrap text-sm">
-              {editingId === g.id ? (
-                <input 
-                  type="text" 
-                  value={editData.name} 
-                  onChange={e => setEditData({...editData, name: e.target.value, code: e.target.value})}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm font-mono w-full"
-                />
-              ) : (
-                <span className="font-mono text-blue-600 font-bold">{g.name}</span>
-              )}
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm">
-              {editingId === g.id ? (
-                <select 
-                  value={editData.level} 
-                  onChange={e => setEditData({...editData, level: e.target.value})}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
-                >
-                  {Object.keys(levelPrices).map(l => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
-              ) : (
-                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">{g.level}</span>
-              )}
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-              {editingId === g.id ? (
-                <div className="flex items-center">
-                  <input 
-                    type="number" 
-                    value={editData.price} 
-                    onChange={e => setEditData({...editData, price: Number(e.target.value)})}
-                    className="border border-gray-300 rounded px-2 py-1 text-sm w-20 mr-1"
-                  />
-                  <span className="text-gray-500 text-xs">EGP</span>
-                </div>
-              ) : (
-                `${g.price} EGP`
-              )}
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              {editingId === g.id ? (
-                <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-900 mr-4 font-bold">Save</button>
-              ) : (
-                <button onClick={() => startEdit(g)} className="text-blue-600 hover:text-blue-900 mr-4">
-                  <Edit size={18} />
-                </button>
-              )}
-              <button onClick={() => onDelete(g.id)} className="text-red-600 hover:text-red-900">
-                <Trash2 size={18} />
-              </button>
-            </td>
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border-t dark:border-gray-700">
+        <thead className="bg-gray-50 dark:bg-gray-900/50">
+          <tr>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Group Code</th>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Level</th>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Price</th>
+            <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Actions</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+          {groups.map(g => (
+            <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-blue-600 dark:text-blue-400 font-bold">
+                {editingId === g.id ? (
+                  <input type="text" value={editData.code} onChange={e => setEditData({...editData, code: e.target.value.toUpperCase()})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 w-full" />
+                ) : g.code}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                {editingId === g.id ? (
+                  <select 
+                    value={editData.level} 
+                    onChange={e => setEditData({...editData, level: e.target.value, price: levelPrices[e.target.value] || 0})} 
+                    className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1"
+                  >
+                    {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                ) : <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-bold px-2.5 py-1 rounded-md">{g.level}</span>}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 font-bold">
+                {editingId === g.id ? (
+                  <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: parseInt(e.target.value)})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 w-24 text-center" />
+                ) : `${g.price} EGP`}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                {editingId === g.id ? (
+                  <button onClick={() => saveEdit(g.id)} className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-bold mr-4">Save</button>
+                ) : (
+                  <button onClick={() => startEdit(g)} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mr-4 bg-blue-50 dark:bg-blue-900/30 p-1.5 rounded-lg">
+                    <Edit size={18} />
+                  </button>
+                )}
+                <button onClick={() => onDelete(g.id)} className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 p-1.5 rounded-lg">
+                  <Trash2 size={18} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 };
 
@@ -762,25 +958,25 @@ const AddScheduleForm = ({ groups, onAdd }) => {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4 items-end">
       <div className="flex-1 w-full">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Select Group</label>
+        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Select Group</label>
         <select 
           required
           value={groupId} 
           onChange={e => setGroupId(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-colors"
         >
-          <option value="" disabled>-- Choose a Group --</option>
+          <option value="" disabled>-- Select --</option>
           {groups.map(g => (
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}
         </select>
       </div>
       <div className="w-full sm:w-40">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
+        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Day</label>
         <select 
           value={day} 
           onChange={e => setDay(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-colors"
         >
           {DAYS_OF_WEEK.map(d => (
             <option key={d} value={d}>{d}</option>
@@ -788,19 +984,19 @@ const AddScheduleForm = ({ groups, onAdd }) => {
         </select>
       </div>
       <div className="w-full sm:w-40">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Time</label>
         <input 
           type="time" 
           required
           value={time} 
           onChange={e => setTime(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none font-mono transition-colors"
         />
       </div>
       <button 
         type="submit"
         disabled={groups.length === 0}
-        className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full sm:w-auto bg-blue-600 text-white px-8 py-2.5 rounded-lg hover:bg-blue-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors"
       >
         Save Schedule
       </button>
@@ -811,7 +1007,7 @@ const AddScheduleForm = ({ groups, onAdd }) => {
 const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
   const [selectedDay, setSelectedDay] = useState(DAYS_OF_WEEK[0]);
   const [editingId, setEditingId] = useState(null);
-  const [editData, setEditData] = useState({});
+  const [editData, setEditData] = useState({ time: '', day: '' });
 
   const daySchedules = schedules
     .filter(s => s.day === selectedDay)
@@ -819,30 +1015,31 @@ const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
 
   const startEdit = (schedule) => {
     setEditingId(schedule.id);
-    setEditData({ ...schedule });
+    setEditData({ time: schedule.time, day: schedule.day });
   };
 
-  const saveEdit = () => {
-    onUpdate(editingId, editData);
+  const saveEdit = (id) => {
+    onUpdate(id, editData);
     setEditingId(null);
+    if(editData.day !== selectedDay) setSelectedDay(editData.day);
   };
 
   return (
     <div>
-      <div className="flex overflow-x-auto no-scrollbar space-x-2 pb-4 mb-4 border-b border-gray-200">
+      <div className="flex overflow-x-auto no-scrollbar gap-2 pb-4 mb-4 border-b border-gray-200 dark:border-gray-700">
         {DAYS_OF_WEEK.map(day => (
           <button
             key={day}
-            onClick={() => { setSelectedDay(day); setEditingId(null); }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+            onClick={() => setSelectedDay(day)}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
               selectedDay === day 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-blue-600 text-white shadow-md transform scale-105' 
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
             {day}
-            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-              selectedDay === day ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-700'
+            <span className={`px-2 py-0.5 rounded-md text-xs ${
+              selectedDay === day ? 'bg-blue-500 text-white' : 'bg-gray-300 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
             }`}>
               {schedules.filter(s => s.day === day).length}
             </span>
@@ -851,61 +1048,45 @@ const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
       </div>
 
       {daySchedules.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-          <Clock className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-          <p className="text-gray-500">No sessions scheduled for {selectedDay}.</p>
+        <div className="text-center py-12 bg-gray-50 dark:bg-gray-900/50 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+          <Clock className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
+          <p className="text-gray-500 dark:text-gray-400 font-medium">No schedules recorded for {selectedDay}.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {daySchedules.map(s => {
             const group = groups.find(g => g.id === s.groupId);
-            
-            if (editingId === s.id) {
-              return (
-                <div key={s.id} className="flex flex-col bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-sm">
-                  <div className="space-y-3 mb-4">
-                    <div>
-                      <label className="text-xs text-gray-500">Day</label>
-                      <select value={editData.day} onChange={e => setEditData({...editData, day: e.target.value})} className="w-full border rounded p-1 text-sm bg-white">
-                        {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500">Time</label>
-                      <input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="w-full border rounded p-1 text-sm" />
-                    </div>
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <button onClick={() => setEditingId(null)} className="px-3 py-1 text-sm text-gray-600 bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
-                    <button onClick={saveEdit} className="px-3 py-1 text-sm text-white bg-emerald-600 rounded hover:bg-emerald-700 font-medium">Save</button>
-                  </div>
-                </div>
-              );
-            }
-
             return (
-              <div key={s.id} className="flex flex-col bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative group/card">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-lg">
-                    <Clock size={16} className="mr-2" />
-                    {formatTime(s.time)}
+              <div key={s.id} className="flex flex-col bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative group">
+                {editingId === s.id ? (
+                  <div className="space-y-3 mb-2">
+                     <div className="flex gap-2">
+                       <select value={editData.day} onChange={e => setEditData({...editData, day: e.target.value})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded p-1 w-full text-sm">
+                         {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
+                       </select>
+                       <input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded p-1 w-full text-sm font-mono"/>
+                     </div>
+                     <button onClick={() => saveEdit(s.id)} className="w-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 font-bold py-1 rounded">Save Changes</button>
                   </div>
-                  <div className="flex space-x-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                    <button onClick={() => startEdit(s)} className="text-gray-400 hover:text-blue-600 p-1" title="Edit schedule">
-                      <Edit size={16} />
-                    </button>
-                    <button onClick={() => onDelete(s.id)} className="text-gray-400 hover:text-red-600 p-1" title="Delete schedule">
-                      <Trash2 size={16} />
-                    </button>
+                ) : (
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center text-blue-700 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                      <Clock size={18} className="mr-2" />
+                      <span>{formatTime(s.time)}</span>
+                    </div>
+                    <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit(s)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 p-1.5"><Edit size={16} /></button>
+                      <button onClick={() => onDelete(s.id)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 p-1.5"><Trash2 size={16} /></button>
+                    </div>
                   </div>
-                </div>
+                )}
                 
                 <div>
-                  <h4 className="text-gray-900 font-mono font-bold text-lg mb-1 break-all">
+                  <h4 className="text-gray-900 dark:text-white font-mono font-bold text-lg mb-2 break-all">
                     {group ? group.name : 'Unknown Group'}
                   </h4>
                   {group && (
-                    <span className="inline-block bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded border border-gray-200 mt-2">
+                    <span className="inline-block bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold px-2.5 py-1 rounded-md border border-gray-200 dark:border-gray-600">
                       Level: {group.level}
                     </span>
                   )}
@@ -919,7 +1100,7 @@ const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
   );
 };
 
-const QuickAddSession = ({ onAdd }) => {
+const QuickAddSession = ({ onAdd, levelPrices }) => {
   const [code, setCode] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => getLocalYYYYMMDD());
 
@@ -954,26 +1135,27 @@ const QuickAddSession = ({ onAdd }) => {
     <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
       <div className="relative flex-1">
         <input 
-          type="text" 
+          type="text"
           value={code} 
           onChange={e => setCode(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none uppercase text-lg font-mono shadow-sm"
-          placeholder="Paste smart code (e.g. 3c.Sr.q2...) or Group Code..."
+          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white pl-12 pr-4 py-3.5 focus:ring-2 focus:ring-blue-500 outline-none uppercase text-lg font-mono shadow-sm transition-colors"
+          placeholder="Paste Smart Code or Group Code..."
           autoFocus
         />
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <Calendar className="text-gray-400" size={20} />
+        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+          <Calendar className="text-gray-400 dark:text-gray-500" size={22} />
         </div>
       </div>
       <input 
         type="date"
         value={selectedDate}
         onChange={e => setSelectedDate(e.target.value)}
-        className="rounded-lg border border-gray-300 px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm text-gray-700"
+        className="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-3.5 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm font-bold transition-colors"
       />
       <button 
         type="submit"
-        className="bg-gray-900 text-white px-8 py-3 rounded-lg hover:bg-gray-800 font-medium shadow-sm whitespace-nowrap"
+        disabled={Object.keys(levelPrices).length === 0}
+        className="bg-gray-900 dark:bg-blue-600 text-white px-8 py-3.5 rounded-xl hover:bg-gray-800 dark:hover:bg-blue-700 font-bold shadow-sm whitespace-nowrap text-lg transition-colors disabled:opacity-50"
       >
         Save Session
       </button>
@@ -983,13 +1165,14 @@ const QuickAddSession = ({ onAdd }) => {
 
 const SessionTable = ({ sessions, onDelete, onUpdate, levelPrices }) => {
   const [editingId, setEditingId] = useState(null);
-  const [editData, setEditData] = useState({});
+  const [editData, setEditData] = useState({ date: '', level: '', price: 0 });
+  const availableLevels = Object.keys(levelPrices);
 
   const startEdit = (session) => {
     setEditingId(session.id);
     const d = new Date(session.date);
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    setEditData({
+    setEditData({ 
       date: d.toISOString().slice(0, 16),
       level: session.level,
       price: session.price
@@ -1006,85 +1189,68 @@ const SessionTable = ({ sessions, onDelete, onUpdate, levelPrices }) => {
   };
 
   if (sessions.length === 0) {
-    return <div className="p-8 text-center text-gray-500">No sessions recorded yet.</div>;
+    return <div className="p-10 text-center text-gray-500 dark:text-gray-400 font-medium bg-gray-50 dark:bg-gray-900/50 rounded-xl">No sessions recorded in this period.</div>;
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <thead className="bg-gray-50 dark:bg-gray-900/50">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date & Time</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Group</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Date & Time</th>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Group</th>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Level</th>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Price</th>
+            <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Actions</th>
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
           {[...sessions].sort((a,b) => new Date(b.date) - new Date(a.date)).map(s => (
-            <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+            <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                 {editingId === s.id ? (
-                  <input 
-                    type="datetime-local" 
-                    value={editData.date} 
-                    onChange={e => setEditData({...editData, date: e.target.value})}
-                    className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
-                  />
+                  <input type="datetime-local" value={editData.date} onChange={e => setEditData({...editData, date: e.target.value})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 focus:ring-2 outline-none font-mono text-xs"/>
                 ) : (
                   <div className="flex flex-col">
-                    <span className="font-medium">{formatDate(s.date)}</span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(s.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    <span className="font-bold">{formatDate(s.date)}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                      {new Date(s.date).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'})}
                     </span>
                   </div>
                 )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <span className="text-sm font-mono font-bold text-blue-600">{s.groupName}</span>
+                <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">{s.groupName}</span>
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 {editingId === s.id ? (
                   <select 
                     value={editData.level} 
-                    onChange={e => setEditData({...editData, level: e.target.value})}
-                    className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                    onChange={e => setEditData({...editData, level: e.target.value, price: levelPrices[e.target.value] || 0})} 
+                    className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 font-bold"
                   >
-                    {Object.keys(levelPrices).map(l => (
-                      <option key={l} value={l}>{l}</option>
-                    ))}
+                    {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
                   </select>
                 ) : (
-                  <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2 py-0.5 rounded border border-gray-200">
+                  <span className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-bold px-2.5 py-1 rounded border border-gray-200 dark:border-gray-600">
                     {s.level}
                   </span>
                 )}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-gray-100">
                 {editingId === s.id ? (
-                   <div className="flex items-center">
-                     <input 
-                       type="number" 
-                       value={editData.price} 
-                       onChange={e => setEditData({...editData, price: Number(e.target.value)})}
-                       className="border border-gray-300 rounded px-2 py-1 text-sm w-20 mr-1 focus:ring-1 focus:ring-blue-500"
-                     />
-                     <span className="text-xs text-gray-500">EGP</span>
-                   </div>
-                ) : (
-                  `${s.price} EGP`
-                )}
+                  <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: parseInt(e.target.value)})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 w-24 text-center" />
+                ) : `${s.price} EGP`}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 {editingId === s.id ? (
-                  <button onClick={() => saveEdit(s.id)} className="text-emerald-600 hover:text-emerald-900 mr-4 font-bold">Save</button>
+                  <button onClick={() => saveEdit(s.id)} className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300 font-bold mr-4 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded">Save</button>
                 ) : (
-                  <button onClick={() => startEdit(s)} className="text-blue-600 hover:text-blue-900 mr-4">
+                  <button onClick={() => startEdit(s)} className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 mr-3 bg-blue-50 dark:bg-blue-900/30 p-1.5 rounded-lg">
                     <Edit size={18} />
                   </button>
                 )}
-                <button onClick={() => onDelete(s.id)} className="text-red-600 hover:text-red-900">
+                <button onClick={() => onDelete(s.id)} className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 bg-red-50 dark:bg-red-900/30 p-1.5 rounded-lg">
                   <Trash2 size={18} />
                 </button>
               </td>
@@ -1097,7 +1263,7 @@ const SessionTable = ({ sessions, onDelete, onUpdate, levelPrices }) => {
 };
 
 const exportCSV = (sessions, period) => {
-  const headers = ['Date', 'Time', 'Group Code / Name', 'Level', 'Price (EGP)'];
+  const headers = ['Date', 'Time', 'Group Code', 'Level', 'Price (EGP)'];
   
   const rows = [...sessions]
     .sort((a,b) => new Date(a.date) - new Date(b.date))
@@ -1105,7 +1271,7 @@ const exportCSV = (sessions, period) => {
       const d = new Date(s.date);
       return [
         d.toLocaleDateString('en-GB'),
-        d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+        d.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}),
         `"${s.groupName}"`,
         s.level,
         s.price
@@ -1113,11 +1279,11 @@ const exportCSV = (sessions, period) => {
     });
 
   const totalSalary = sessions.reduce((sum, s) => sum + s.price, 0);
-  rows.push(['', '', '', 'TOTAL SESSIONS', sessions.length]);
-  rows.push(['', '', '', 'TOTAL SALARY', totalSalary]);
+  rows.push(['', '', '', 'Total Sessions', sessions.length]);
+  rows.push(['', '', '', 'Total Salary', totalSalary]);
 
   const csvContent = [
-    `Salary Report: ${formatDate(period.start)} to ${formatDate(period.end)}`,
+    `Report Period: ${period.label}`,
     headers.join(','),
     ...rows.map(e => e.join(','))
   ].join('\n');
@@ -1126,7 +1292,8 @@ const exportCSV = (sessions, period) => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `Salary_Report_${formatDate(period.start).replace(/ /g, '_')}.csv`);
+  const fileName = `Report_${period.label.replace(/ /g, '_')}.csv`;
+  link.setAttribute('download', fileName);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();
