@@ -621,10 +621,13 @@ export default function App() {
         </div>
 
         {/* Printable Area - Only visible when printing/saving as PDF */}
-        <div className="hidden print:block w-full text-black bg-white p-4">
-          <div className="text-center mb-8 border-b-2 border-gray-800 pb-4">
-            <h1 className="text-3xl font-extrabold text-gray-900 uppercase tracking-widest">Weekly Teaching Schedule</h1>
-            <p className="text-gray-500 mt-2 font-medium">Generated on {formatDate(new Date().toISOString())}</p>
+        <div 
+          className="hidden print:block w-full bg-white p-4"
+          style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
+        >
+          <div className="text-center mb-8 border-b-2 border-blue-200 pb-4">
+            <h1 className="text-4xl font-extrabold text-blue-800 uppercase tracking-widest">Weekly Teaching Schedule</h1>
+            <p className="text-gray-500 mt-2 font-bold">Generated on {formatDate(new Date().toISOString())}</p>
           </div>
           
           <div className="space-y-8">
@@ -636,33 +639,38 @@ export default function App() {
               if (daySchedules.length === 0) return null;
 
               return (
-                <div key={day} className="mb-6 break-inside-avoid">
-                  <div className="flex items-center gap-3 mb-3">
-                    <h2 className="text-xl font-bold text-gray-900 bg-gray-100 px-4 py-2 rounded-lg border border-gray-300 uppercase tracking-wider">{day}</h2>
-                    <span className="text-sm font-bold text-gray-500">{daySchedules.length} Sessions</span>
+                <div key={day} className="mb-6 break-inside-avoid border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  {/* Day Header */}
+                  <div className="flex items-center justify-between px-6 py-3 bg-blue-50 border-b border-blue-100">
+                    <h2 className="text-2xl font-bold text-blue-800 uppercase tracking-wider">{day}</h2>
+                    <span className="text-sm font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">{daySchedules.length} Sessions</span>
                   </div>
-                  <table className="min-w-full border-collapse border-2 border-gray-800 rounded-lg">
-                    <thead className="bg-gray-100 border-b-2 border-gray-800">
+
+                  <table className="min-w-full border-collapse">
+                    <thead className="bg-blue-600 text-white">
                       <tr>
-                        <th className="border-r border-gray-400 px-4 py-3 text-left font-extrabold text-gray-800 w-1/4 uppercase text-sm">Time</th>
-                        <th className="border-r border-gray-400 px-4 py-3 text-left font-extrabold text-gray-800 w-1/2 uppercase text-sm">Group Code / Name</th>
-                        <th className="px-4 py-3 text-center font-extrabold text-gray-800 w-1/4 uppercase text-sm">Level</th>
+                        <th className="px-6 py-3 text-left font-extrabold w-1/4 uppercase text-sm border-r border-blue-500">Time</th>
+                        <th className="px-6 py-3 text-left font-extrabold w-1/2 uppercase text-sm border-r border-blue-500">Group Code / Name</th>
+                        <th className="px-6 py-3 text-center font-extrabold w-1/4 uppercase text-sm">Level</th>
                       </tr>
                     </thead>
                     <tbody>
                       {daySchedules.map((s, index) => {
                         const group = groups.find(g => g.id === s.groupId);
                         return (
-                          <tr key={s.id} className={`border-b border-gray-300 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                            <td className="border-r border-gray-300 px-4 py-3 font-bold text-gray-900 text-lg">
+                          <tr key={s.id} className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="px-6 py-4 font-bold text-blue-700 text-lg border-r border-gray-100">
                               {formatTime(s.time)}
                             </td>
-                            <td className="border-r border-gray-300 px-4 py-3 font-bold text-gray-800 font-mono text-lg break-all">
+                            <td className="px-6 py-4 font-bold text-gray-800 font-mono text-lg break-all border-r border-gray-100">
                               {group ? group.name : 'Unknown'}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-6 py-4 text-center">
                               {group && (
-                                <span className="px-3 py-1 bg-gray-200 border border-gray-400 rounded-md text-sm font-extrabold text-gray-800 shadow-sm">
+                                <span 
+                                  style={getLevelStyle(group.level, levelsData)} 
+                                  className="inline-block px-4 py-1.5 rounded-md text-sm font-extrabold shadow-sm"
+                                >
                                   {group.level}
                                 </span>
                               )}
