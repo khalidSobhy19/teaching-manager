@@ -100,6 +100,29 @@ const getWeekdaysCount = (startDate, endDate, dayNameEn) => {
   return count;
 };
 
+// Helper to convert hex to rgba for beautiful transparent badges
+const hexToRgba = (hex, opacity) => {
+  let cleanHex = hex.replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map(char => char + char).join('');
+  }
+  const r = parseInt(cleanHex.substring(0, 2), 16);
+  const g = parseInt(cleanHex.substring(2, 4), 16);
+  const b = parseInt(cleanHex.substring(4, 6), 16);
+  return `rgba(${r || 0}, ${g || 0}, ${b || 0}, ${opacity})`;
+};
+
+const getLevelStyle = (level, levelsData) => {
+  const color = (levelsData && levelsData[level] && levelsData[level].color) ? levelsData[level].color : '#6b7280';
+  return {
+    backgroundColor: hexToRgba(color, 0.15),
+    color: color,
+    borderColor: hexToRgba(color, 0.3),
+    borderWidth: '1px',
+    borderStyle: 'solid'
+  };
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toast, setToast] = useState(null);
@@ -124,12 +147,34 @@ export default function App() {
     localStorage.setItem('teachingTheme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  const [levelPrices, setLevelPrices] = useState(() => {
+  // Unified state for Levels: Name, Price, and Color
+  const [levelsData, setLevelsData] = useState(() => {
     try {
-      const saved = localStorage.getItem('teachingLevelPrices');
+      const saved = localStorage.getItem('teachingLevelsData');
       if (saved) return JSON.parse(saved);
+
+      // Fallback migration from old simple levelPrices
+      const oldSaved = localStorage.getItem('teachingLevelPrices');
+      if (oldSaved) {
+        const parsedOld = JSON.parse(oldSaved);
+        const migrated = {};
+        const defaultColors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'];
+        Object.keys(parsedOld).forEach((key, index) => {
+          migrated[key] = {
+            price: typeof parsedOld[key] === 'number' ? parsedOld[key] : (parsedOld[key].price || 0),
+            color: defaultColors[index % defaultColors.length]
+          };
+        });
+        return migrated;
+      }
     } catch (e) {}
-    return { Q1: 110, Q2: 110, Q3: 120 };
+    
+    // Defaults if completely new
+    return {
+      Q1: { price: 110, color: '#3b82f6' },
+      Q2: { price: 110, color: '#10b981' },
+      Q3: { price: 120, color: '#f59e0b' }
+    };
   });
 
   const [groups, setGroups] = useState(() => {
@@ -156,7 +201,7 @@ export default function App() {
     return [];
   });
 
-  useEffect(() => localStorage.setItem('teachingLevelPrices', JSON.stringify(levelPrices)), [levelPrices]);
+  useEffect(() => localStorage.setItem('teachingLevelsData', JSON.stringify(levelsData)), [levelsData]);
   useEffect(() => localStorage.setItem('teachingGroups', JSON.stringify(groups)), [groups]);
   useEffect(() => localStorage.setItem('teachingSessions', JSON.stringify(sessions)), [sessions]);
   useEffect(() => localStorage.setItem('teachingSchedules', JSON.stringify(schedules)), [schedules]);
@@ -194,32 +239,31 @@ export default function App() {
   }, [sessions, activePeriod]);
 
 
-  const addLevel = (name, price) => {
+  const addLevel = (name, price, color) => {
     if (!name) return;
     const upperName = name.toUpperCase();
-    if (levelPrices[upperName]) {
+    if (levelsData[upperName]) {
       showToast('Level name already exists!', 'error');
       return;
     }
-    setLevelPrices(prev => ({ ...prev, [upperName]: parseInt(price) || 0 }));
+    setLevelsData(prev => ({ ...prev, [upperName]: { price: parseInt(price) || 0, color: color } }));
     showToast('Level added successfully');
   };
 
-  const editLevel = (oldName, newName, newPrice, applyFromDate) => {
+  const editLevel = (oldName, newName, newPrice, newColor, applyFromDate) => {
     const upperNewName = newName.toUpperCase();
-    if (oldName !== upperNewName && levelPrices[upperNewName]) {
+    if (oldName !== upperNewName && levelsData[upperNewName]) {
       showToast('This new name already exists in levels!', 'error');
       return;
     }
 
-    setLevelPrices(prev => {
+    setLevelsData(prev => {
       const updated = { ...prev };
       delete updated[oldName];
-      updated[upperNewName] = parseInt(newPrice) || 0;
+      updated[upperNewName] = { price: parseInt(newPrice) || 0, color: newColor };
       return updated;
     });
 
-    // Update groups (Name and default price)
     setGroups(groups.map(g => {
       if (g.level === oldName) {
         return { ...g, level: upperNewName, price: parseInt(newPrice) || 0 };
@@ -227,13 +271,11 @@ export default function App() {
       return g;
     }));
 
-    // Update sessions (Name and retroactive price update)
     setSessions(prevSessions => prevSessions.map(s => {
       let updatedSession = { ...s };
       if (s.level === oldName) {
         updatedSession.level = upperNewName;
       }
-      
       if (applyFromDate && (s.level === oldName || s.level === upperNewName)) {
         const sDate = new Date(s.date);
         const fromDateObj = new Date(applyFromDate);
@@ -253,7 +295,7 @@ export default function App() {
       showToast('Cannot delete level used by existing groups or sessions.', 'error');
       return;
     }
-    setLevelPrices(prev => {
+    setLevelsData(prev => {
       const updated = { ...prev };
       delete updated[name];
       return updated;
@@ -336,8 +378,7 @@ export default function App() {
       sessionDate.setHours(12, 0, 0, 0);
     }
 
-    // Default to the first available level, or 'Q1'
-    const availableLevelKeys = Object.keys(levelPrices);
+    const availableLevelKeys = Object.keys(levelsData);
     let level = availableLevelKeys.length > 0 ? availableLevelKeys[0] : 'Q1'; 
     let isSmartCode = codeStr.includes('.');
     let parsedTime = null;
@@ -349,12 +390,11 @@ export default function App() {
       parts.forEach(part => {
         const lowerPart = part.toLowerCase();
         
-        // Dynamically check against ALL currently defined levels
         if (lowerLevelKeys.includes(lowerPart)) {
           const actualKey = availableLevelKeys.find(k => k.toLowerCase() === lowerPart);
           level = actualKey;
         } else if (/^\d{8}$/.test(part)) {
-          // Date already handled
+          // Date Handled
         } else if (/^\d{1,2}(am|pm)$/.test(lowerPart) || lowerPart === 'am' || lowerPart === 'pm') {
           parsedTime = lowerPart; 
         }
@@ -381,7 +421,7 @@ export default function App() {
           name: finalGroupCode,
           code: finalGroupCode,
           level: level,
-          price: levelPrices[level] || 0
+          price: levelsData[level]?.price || 0
         };
         setGroups(prev => [...prev, group]);
       } else {
@@ -389,7 +429,7 @@ export default function App() {
         return false;
       }
     } else if (isSmartCode) {
-      group = { ...group, level: level, price: levelPrices[level] || group.price };
+      group = { ...group, level: level, price: levelsData[level]?.price || group.price };
     }
 
     const newSession = {
@@ -499,7 +539,7 @@ export default function App() {
               <PlusCircle size={20} className="text-blue-600 dark:text-blue-400" />
               Quick Add Session
             </h3>
-            <QuickAddSession onAdd={addSessionByCode} levelPrices={levelPrices} />
+            <QuickAddSession onAdd={addSessionByCode} levelsData={levelsData} />
           </div>
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 transition-colors">
@@ -508,13 +548,13 @@ export default function App() {
               Sessions by Level
             </h3>
             <div className="space-y-3">
-              {Object.keys(levelPrices).map(level => {
+              {Object.keys(levelsData).map(level => {
                 const count = sessionsByLevel[level] || 0;
                 return (
                   <div key={level} className="flex justify-between items-center text-sm p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 transition-colors">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 px-3 py-1 rounded shadow-sm border dark:border-gray-700">Level {level}</span>
+                    <span style={getLevelStyle(level, levelsData)} className="font-bold px-3 py-1 rounded shadow-sm">Level {level}</span>
                     <span className="text-gray-900 dark:text-gray-100 font-medium">
-                      {count} sessions <span className="text-gray-400 dark:text-gray-600 mx-1">|</span> {count * levelPrices[level]} EGP
+                      {count} sessions <span className="text-gray-400 dark:text-gray-600 mx-1">|</span> {count * (levelsData[level]?.price || 0)} EGP
                     </span>
                   </div>
                 );
@@ -532,7 +572,7 @@ export default function App() {
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Manage Levels & Groups</h2>
         
         <LevelsManager 
-          levelPrices={levelPrices} 
+          levelsData={levelsData} 
           onAdd={addLevel} 
           onEdit={editLevel} 
           onDelete={deleteLevel} 
@@ -540,11 +580,11 @@ export default function App() {
 
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
           <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-100">Add New Group</h3>
-          <AddGroupForm onAdd={addGroup} levelPrices={levelPrices} />
+          <AddGroupForm onAdd={addGroup} levelsData={levelsData} />
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
-          <GroupsTable groups={groups} onDelete={deleteGroup} onUpdate={updateGroup} levelPrices={levelPrices} />
+          <GroupsTable groups={groups} onDelete={deleteGroup} onUpdate={updateGroup} levelsData={levelsData} />
         </div>
       </div>
     );
@@ -562,7 +602,7 @@ export default function App() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors">
-          <InteractiveScheduleView schedules={schedules} groups={groups} onDelete={deleteSchedule} onUpdate={updateSchedule} />
+          <InteractiveScheduleView schedules={schedules} groups={groups} onDelete={deleteSchedule} onUpdate={updateSchedule} levelsData={levelsData} />
         </div>
       </div>
     );
@@ -578,7 +618,7 @@ export default function App() {
             sessions={activePeriodSessions} 
             onDelete={deleteSession} 
             onUpdate={updateSession}
-            levelPrices={levelPrices}
+            levelsData={levelsData}
           />
         </div>
       </div>
@@ -638,12 +678,12 @@ export default function App() {
             <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-lg print:border print:border-gray-200 border dark:border-gray-700">
               <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700 pb-2 mb-4">Breakdown by Level</h3>
               <div className="space-y-2">
-                {Object.keys(levelPrices).map(level => {
+                {Object.keys(levelsData).map(level => {
                   const count = activePeriodSessions.filter(s => s.level === level).length;
-                  const sum = count * levelPrices[level];
+                  const sum = count * (levelsData[level]?.price || 0);
                   return (
                     <div key={level} className="flex justify-between items-center text-sm bg-white dark:bg-gray-800 p-2 rounded shadow-sm border dark:border-gray-700">
-                      <span className="font-bold text-gray-700 dark:text-gray-300 w-auto pe-4">Level {level}:</span>
+                      <span style={getLevelStyle(level, levelsData)} className="font-bold px-2 py-0.5 rounded text-xs w-auto pe-4">Level {level}</span>
                       <span className="text-gray-500 dark:text-gray-400">{count} sessions</span>
                       <span className="font-bold text-gray-900 dark:text-white text-right w-24">{sum} EGP</span>
                     </div>
@@ -668,7 +708,9 @@ export default function App() {
                 <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-300 font-medium">{formatDate(s.date)}</td>
                   <td className="px-4 py-3 text-sm text-blue-600 dark:text-blue-400 font-mono font-bold break-all">{s.groupName}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"><span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{s.level}</span></td>
+                  <td className="px-4 py-3 text-sm">
+                    <span style={getLevelStyle(s.level, levelsData)} className="px-2 py-1 rounded text-xs font-bold">{s.level}</span>
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 font-bold text-right">{s.price} EGP</td>
                 </tr>
               ))}
@@ -757,31 +799,35 @@ const NavButton = ({ icon, label, isActive, onClick }) => (
   </button>
 );
 
-const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
+const LevelsManager = ({ levelsData, onAdd, onEdit, onDelete }) => {
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
+  const [newColor, setNewColor] = useState('#3b82f6');
   
   const [editingKey, setEditingKey] = useState(null);
   const [editName, setEditName] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editColor, setEditColor] = useState('');
   const [editFromDate, setEditFromDate] = useState('');
 
   const handleAdd = (e) => {
     e.preventDefault();
-    onAdd(newName, newPrice);
+    onAdd(newName, newPrice, newColor);
     setNewName('');
     setNewPrice('');
+    setNewColor('#3b82f6');
   };
 
-  const startEdit = (key, price) => {
+  const startEdit = (key, data) => {
     setEditingKey(key);
     setEditName(key);
-    setEditPrice(price);
+    setEditPrice(data.price);
+    setEditColor(data.color || '#3b82f6');
     setEditFromDate('');
   };
 
   const saveEdit = () => {
-    onEdit(editingKey, editName, editPrice, editFromDate);
+    onEdit(editingKey, editName, editPrice, editColor, editFromDate);
     setEditingKey(null);
   };
 
@@ -789,11 +835,11 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
     <div className="bg-gradient-to-br from-gray-900 to-gray-800 dark:from-black dark:to-gray-900 rounded-xl shadow-sm p-6 text-white transition-colors">
       <h3 className="text-lg font-semibold mb-4 text-gray-100 flex items-center gap-2">
         <DollarSign size={20} className="text-yellow-400"/>
-        Level Definitions & Prices
+        Level Definitions, Colors & Prices
       </h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-        {Object.entries(levelPrices).map(([level, price]) => (
+        {Object.entries(levelsData).map(([level, data]) => (
           <div key={level} className="bg-white/10 p-4 rounded-lg flex flex-col gap-3 backdrop-blur-sm border border-white/10">
             {editingKey === level ? (
               <div className="flex flex-col gap-2">
@@ -806,7 +852,10 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
                     type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)}
                     className="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1 rounded outline-none font-bold text-sm" placeholder="Price"
                   />
-                  <span className="text-xs text-gray-300">EGP</span>
+                  <input 
+                    type="color" value={editColor} onChange={e => setEditColor(e.target.value)}
+                    className="w-10 h-8 rounded cursor-pointer p-0 border-0" title="Select Level Color"
+                  />
                 </div>
                 <div className="flex flex-col gap-1 mt-1">
                   <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Apply price from (Optional):</label>
@@ -823,14 +872,17 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
             ) : (
               <>
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-xl">{level}</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-lg text-yellow-300">{price}</span>
+                    <div className="w-4 h-4 rounded-full border border-white/20 shadow-sm" style={{ backgroundColor: data.color || '#6b7280' }}></div>
+                    <span className="font-bold text-xl">{level}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-lg text-yellow-300">{data.price}</span>
                     <span className="text-xs text-gray-300">EGP</span>
                   </div>
                 </div>
                 <div className="flex gap-2 justify-end">
-                  <button onClick={() => startEdit(level, price)} className="text-blue-300 hover:text-white transition-colors"><Edit size={16}/></button>
+                  <button onClick={() => startEdit(level, data)} className="text-blue-300 hover:text-white transition-colors"><Edit size={16}/></button>
                   <button onClick={() => onDelete(level)} className="text-red-300 hover:text-white transition-colors"><Trash2 size={16}/></button>
                 </div>
               </>
@@ -840,7 +892,7 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
       </div>
 
       <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3 items-end bg-black/20 p-4 rounded-lg border border-white/5">
-        <div className="flex-1 w-full">
+        <div className="flex-1 w-full sm:w-1/3">
           <label className="block text-xs font-bold text-gray-300 mb-1">New Level Name</label>
           <input 
             type="text" required value={newName} onChange={e => setNewName(e.target.value.toUpperCase())}
@@ -848,7 +900,7 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
             placeholder="e.g., Q4, PRIMARY..."
           />
         </div>
-        <div className="flex-1 w-full sm:w-32">
+        <div className="w-full sm:w-28">
           <label className="block text-xs font-bold text-gray-300 mb-1">Price (EGP)</label>
           <input 
             type="number" required value={newPrice} onChange={e => setNewPrice(e.target.value)}
@@ -856,7 +908,14 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
             placeholder="0"
           />
         </div>
-        <button type="submit" className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-500 font-bold transition-colors">
+        <div className="w-full sm:w-20">
+          <label className="block text-xs font-bold text-gray-300 mb-1">Color</label>
+          <input 
+            type="color" value={newColor} onChange={e => setNewColor(e.target.value)}
+            className="w-full h-[42px] rounded-lg cursor-pointer bg-transparent border-0 p-0"
+          />
+        </div>
+        <button type="submit" className="w-full sm:w-auto bg-blue-600 text-white px-6 py-[10px] rounded-lg hover:bg-blue-500 font-bold transition-colors">
           Add Level
         </button>
       </form>
@@ -864,12 +923,11 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
   );
 };
 
-const AddGroupForm = ({ onAdd, levelPrices }) => {
+const AddGroupForm = ({ onAdd, levelsData }) => {
   const [code, setCode] = useState('');
-  const availableLevels = Object.keys(levelPrices);
+  const availableLevels = Object.keys(levelsData);
   const [level, setLevel] = useState(availableLevels.length > 0 ? availableLevels[0] : '');
 
-  // Update default level if levels change
   useEffect(() => {
     if (!availableLevels.includes(level) && availableLevels.length > 0) {
       setLevel(availableLevels[0]);
@@ -883,7 +941,7 @@ const AddGroupForm = ({ onAdd, levelPrices }) => {
       name: code.trim(), 
       code: code.trim(),
       level,
-      price: levelPrices[level] || 0
+      price: levelsData[level]?.price || 0
     });
     setCode('');
   };
@@ -920,11 +978,11 @@ const AddGroupForm = ({ onAdd, levelPrices }) => {
   );
 };
 
-const GroupsTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
+const GroupsTable = ({ groups, onDelete, onUpdate, levelsData }) => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
   const [editFromDate, setEditFromDate] = useState('');
-  const availableLevels = Object.keys(levelPrices);
+  const availableLevels = Object.keys(levelsData);
 
   const startEdit = (group) => {
     setEditingId(group.id);
@@ -960,16 +1018,16 @@ const GroupsTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
                   <input type="text" value={editData.code} onChange={e => setEditData({...editData, code: e.target.value.toUpperCase()})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 w-full" />
                 ) : g.code}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+              <td className="px-6 py-4 whitespace-nowrap text-sm">
                 {editingId === g.id ? (
                   <select 
                     value={editData.level} 
-                    onChange={e => setEditData({...editData, level: e.target.value, price: levelPrices[e.target.value] || 0})} 
+                    onChange={e => setEditData({...editData, level: e.target.value, price: levelsData[e.target.value]?.price || 0})} 
                     className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1"
                   >
                     {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
                   </select>
-                ) : <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-bold px-2.5 py-1 rounded-md">{g.level}</span>}
+                ) : <span style={getLevelStyle(g.level, levelsData)} className="px-2.5 py-1 rounded-md text-xs font-bold">{g.level}</span>}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 font-bold">
                 {editingId === g.id ? (
@@ -1063,7 +1121,7 @@ const AddScheduleForm = ({ groups, onAdd }) => {
   );
 };
 
-const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
+const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate, levelsData }) => {
   const [selectedDay, setSelectedDay] = useState(DAYS_OF_WEEK[0]);
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({ time: '', day: '' });
@@ -1145,7 +1203,7 @@ const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
                     {group ? group.name : 'Unknown Group'}
                   </h4>
                   {group && (
-                    <span className="inline-block bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold px-2.5 py-1 rounded-md border border-gray-200 dark:border-gray-600">
+                    <span style={getLevelStyle(group.level, levelsData)} className="inline-block px-2.5 py-1 rounded-md text-xs font-bold">
                       Level: {group.level}
                     </span>
                   )}
@@ -1159,7 +1217,7 @@ const InteractiveScheduleView = ({ schedules, groups, onDelete, onUpdate }) => {
   );
 };
 
-const QuickAddSession = ({ onAdd, levelPrices }) => {
+const QuickAddSession = ({ onAdd, levelsData }) => {
   const [code, setCode] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => getLocalYYYYMMDD());
 
@@ -1192,7 +1250,6 @@ const QuickAddSession = ({ onAdd, levelPrices }) => {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {/* سطر منفصل بعرض كامل لمربع إدخال الكود عشان ياخد راحته */}
       <div className="relative w-full">
         <input 
           type="text"
@@ -1207,7 +1264,6 @@ const QuickAddSession = ({ onAdd, levelPrices }) => {
         </div>
       </div>
       
-      {/* سطر للتاريخ وزرار الحفظ */}
       <div className="flex flex-col sm:flex-row gap-3">
         <input 
           type="date"
@@ -1217,7 +1273,7 @@ const QuickAddSession = ({ onAdd, levelPrices }) => {
         />
         <button 
           type="submit"
-          disabled={Object.keys(levelPrices).length === 0}
+          disabled={Object.keys(levelsData).length === 0}
           className="flex-1 bg-gray-900 dark:bg-blue-600 text-white px-8 py-3.5 rounded-xl hover:bg-gray-800 dark:hover:bg-blue-700 font-bold shadow-sm whitespace-nowrap text-lg transition-colors disabled:opacity-50"
         >
           Save Session
@@ -1227,10 +1283,10 @@ const QuickAddSession = ({ onAdd, levelPrices }) => {
   );
 };
 
-const SessionTable = ({ sessions, onDelete, onUpdate, levelPrices }) => {
+const SessionTable = ({ sessions, onDelete, onUpdate, levelsData }) => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({ date: '', level: '', price: 0 });
-  const availableLevels = Object.keys(levelPrices);
+  const availableLevels = Object.keys(levelsData);
 
   const startEdit = (session) => {
     setEditingId(session.id);
@@ -1286,17 +1342,17 @@ const SessionTable = ({ sessions, onDelete, onUpdate, levelPrices }) => {
               <td className="px-6 py-4 whitespace-nowrap">
                 <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">{s.groupName}</span>
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+              <td className="px-6 py-4 whitespace-nowrap text-sm">
                 {editingId === s.id ? (
                   <select 
                     value={editData.level} 
-                    onChange={e => setEditData({...editData, level: e.target.value, price: levelPrices[e.target.value] || 0})} 
+                    onChange={e => setEditData({...editData, level: e.target.value, price: levelsData[e.target.value]?.price || 0})} 
                     className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 font-bold"
                   >
                     {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
                   </select>
                 ) : (
-                  <span className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs font-bold px-2.5 py-1 rounded border border-gray-200 dark:border-gray-600">
+                  <span style={getLevelStyle(s.level, levelsData)} className="px-2.5 py-1 rounded text-xs font-bold">
                     {s.level}
                   </span>
                 )}
