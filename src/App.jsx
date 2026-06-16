@@ -205,7 +205,7 @@ export default function App() {
     showToast('Level added successfully');
   };
 
-  const editLevel = (oldName, newName, newPrice) => {
+  const editLevel = (oldName, newName, newPrice, applyFromDate) => {
     const upperNewName = newName.toUpperCase();
     if (oldName !== upperNewName && levelPrices[upperNewName]) {
       showToast('This new name already exists in levels!', 'error');
@@ -219,10 +219,32 @@ export default function App() {
       return updated;
     });
 
-    if (oldName !== upperNewName) {
-      setGroups(groups.map(g => g.level === oldName ? { ...g, level: upperNewName } : g));
-      setSessions(sessions.map(s => s.level === oldName ? { ...s, level: upperNewName } : s));
-    }
+    // Update groups (Name and default price)
+    setGroups(groups.map(g => {
+      if (g.level === oldName) {
+        return { ...g, level: upperNewName, price: parseInt(newPrice) || 0 };
+      }
+      return g;
+    }));
+
+    // Update sessions (Name and retroactive price update)
+    setSessions(prevSessions => prevSessions.map(s => {
+      let updatedSession = { ...s };
+      if (s.level === oldName) {
+        updatedSession.level = upperNewName;
+      }
+      
+      if (applyFromDate && (s.level === oldName || s.level === upperNewName)) {
+        const sDate = new Date(s.date);
+        const fromDateObj = new Date(applyFromDate);
+        fromDateObj.setHours(0, 0, 0, 0);
+        if (sDate >= fromDateObj) {
+          updatedSession.price = parseInt(newPrice) || 0;
+        }
+      }
+      return updatedSession;
+    }));
+
     showToast('Level updated successfully');
   };
 
@@ -248,8 +270,28 @@ export default function App() {
     showToast('Group added successfully');
   };
 
-  const updateGroup = (id, updatedData) => {
+  const updateGroup = (id, updatedData, applyFromDate) => {
     setGroups(groups.map(g => g.id === id ? { ...g, ...updatedData } : g));
+    
+    if (applyFromDate) {
+      setSessions(prevSessions => prevSessions.map(s => {
+        if (s.groupId === id) {
+          const sDate = new Date(s.date);
+          const fromDateObj = new Date(applyFromDate);
+          fromDateObj.setHours(0, 0, 0, 0);
+          if (sDate >= fromDateObj) {
+            return { 
+              ...s, 
+              price: updatedData.price,
+              level: updatedData.level,
+              groupCode: updatedData.name || updatedData.code,
+              groupName: updatedData.name || updatedData.code
+            };
+          }
+        }
+        return s;
+      }));
+    }
     showToast('Group updated');
   };
 
@@ -722,6 +764,7 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
   const [editingKey, setEditingKey] = useState(null);
   const [editName, setEditName] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editFromDate, setEditFromDate] = useState('');
 
   const handleAdd = (e) => {
     e.preventDefault();
@@ -734,10 +777,11 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
     setEditingKey(key);
     setEditName(key);
     setEditPrice(price);
+    setEditFromDate('');
   };
 
   const saveEdit = () => {
-    onEdit(editingKey, editName, editPrice);
+    onEdit(editingKey, editName, editPrice, editFromDate);
     setEditingKey(null);
   };
 
@@ -764,9 +808,16 @@ const LevelsManager = ({ levelPrices, onAdd, onEdit, onDelete }) => {
                   />
                   <span className="text-xs text-gray-300">EGP</span>
                 </div>
+                <div className="flex flex-col gap-1 mt-1">
+                  <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Apply price from (Optional):</label>
+                  <input 
+                    type="date" value={editFromDate} onChange={e => setEditFromDate(e.target.value)} 
+                    className="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1 rounded outline-none font-mono text-xs focus:border-blue-400 border border-transparent" 
+                  />
+                </div>
                 <div className="flex gap-2 mt-1">
-                  <button onClick={saveEdit} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-1 rounded transition-colors">Save</button>
-                  <button onClick={() => setEditingKey(null)} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-xs font-bold py-1 rounded transition-colors">Cancel</button>
+                  <button onClick={saveEdit} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-1.5 rounded transition-colors">Save</button>
+                  <button onClick={() => setEditingKey(null)} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-xs font-bold py-1.5 rounded transition-colors">Cancel</button>
                 </div>
               </div>
             ) : (
@@ -872,15 +923,17 @@ const AddGroupForm = ({ onAdd, levelPrices }) => {
 const GroupsTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
+  const [editFromDate, setEditFromDate] = useState('');
   const availableLevels = Object.keys(levelPrices);
 
   const startEdit = (group) => {
     setEditingId(group.id);
     setEditData({ code: group.code, level: group.level, price: group.price });
+    setEditFromDate('');
   };
 
   const saveEdit = (id) => {
-    onUpdate(id, { name: editData.code, ...editData });
+    onUpdate(id, { name: editData.code, ...editData }, editFromDate);
     setEditingId(null);
   };
 
@@ -920,7 +973,13 @@ const GroupsTable = ({ groups, onDelete, onUpdate, levelPrices }) => {
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 font-bold">
                 {editingId === g.id ? (
-                  <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: parseInt(e.target.value)})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 w-24 text-center" />
+                  <div className="flex flex-col gap-2">
+                    <input type="number" value={editData.price} onChange={e => setEditData({...editData, price: parseInt(e.target.value)})} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 w-28 text-center" />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">Apply from:</label>
+                      <input type="date" value={editFromDate} onChange={e=>setEditFromDate(e.target.value)} className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 text-xs w-28 font-normal" title="Apply price retroactively from date" />
+                    </div>
+                  </div>
                 ) : `${g.price} EGP`}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
