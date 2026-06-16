@@ -684,7 +684,7 @@ export default function App() {
                   return (
                     <div key={level} className="flex justify-between items-center text-sm bg-white dark:bg-gray-800 p-2 rounded shadow-sm border dark:border-gray-700">
                       <span style={getLevelStyle(level, levelsData)} className="font-bold px-2 py-0.5 rounded text-xs w-auto pe-4">{level}</span>
-                      <span className="text-gray-500 dark:text-gray-400"> {count} </span>
+                      <span className="text-gray-500 dark:text-gray-400"> {count}  sessions </span>
                       <span className="font-bold text-gray-900 dark:text-white text-right w-24">{sum} EGP</span>
                     </div>
                   );
